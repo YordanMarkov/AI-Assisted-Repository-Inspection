@@ -121,7 +121,10 @@ type DeterministicSummary = {
 
 type InspectionReport = {
   overview: string;
+  repositoryStructureAssessment: string;
   architectureSummary: string;
+  codeQualityAssessment: string;
+  dependencyAndConfigurationAssessment: string;
   documentationAssessment: string;
   testingAssessment: string;
   maintainabilityRisks: string[];
@@ -146,7 +149,10 @@ const reportSchema = {
   additionalProperties: false,
   required: [
     "overview",
+    "repositoryStructureAssessment",
     "architectureSummary",
+    "codeQualityAssessment",
+    "dependencyAndConfigurationAssessment",
     "documentationAssessment",
     "testingAssessment",
     "maintainabilityRisks",
@@ -159,7 +165,10 @@ const reportSchema = {
   ],
   properties: {
     overview: { type: "string" },
+    repositoryStructureAssessment: { type: "string" },
     architectureSummary: { type: "string" },
+    codeQualityAssessment: { type: "string" },
+    dependencyAndConfigurationAssessment: { type: "string" },
     documentationAssessment: { type: "string" },
     testingAssessment: { type: "string" },
     maintainabilityRisks: {
@@ -291,7 +300,16 @@ function detectStack(paths: string[], packageJson: PackageJson | null) {
   };
 
   if (paths.some((path) => path.endsWith("package.json"))) stack.add("Node.js");
-  if (paths.some((path) => path.endsWith("tsconfig.json"))) stack.add("TypeScript");
+  if (
+    paths.some(
+      (path) =>
+        path.endsWith("tsconfig.json") ||
+        path.endsWith(".ts") ||
+        path.endsWith(".tsx"),
+    )
+  ) {
+    stack.add("TypeScript");
+  }
   if (allDeps.react || paths.some((path) => path.endsWith(".jsx") || path.endsWith(".tsx"))) {
     stack.add("React");
   }
@@ -529,10 +547,21 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
 
   return {
     overview: `${summary.projectName} contains ${summary.fileCount} inspected files and uses ${summary.detectedStack.join(", ") || "an undetected stack"}.`,
+    repositoryStructureAssessment:
+      summary.sourceFolders.length > 0
+        ? `The repository exposes clear source areas: ${summary.sourceFolders.join(", ")}.`
+        : "The repository structure is difficult to assess because no common source folders were detected.",
     architectureSummary:
       summary.sourceFolders.length > 0
         ? `Main source areas detected: ${summary.sourceFolders.join(", ")}.`
         : "No clear source folder structure was detected from the file tree.",
+    codeQualityAssessment: hasTests
+      ? "Basic code quality evidence exists through tests or test scripts, but complexity and duplication still need deeper static analysis."
+      : "Code quality confidence is limited because no automated testing evidence was detected. This prototype does not compute cyclomatic complexity or duplication directly.",
+    dependencyAndConfigurationAssessment:
+      summary.dependencies.length || summary.devDependencies.length
+        ? "Dependency metadata was detected. Configuration quality should be reviewed for scripts, build commands, and clear environment setup."
+        : "No dependency metadata was detected, so dependency and configuration health could not be assessed deeply.",
     documentationAssessment: hasDocs
       ? "Documentation files were detected, but their completeness should be reviewed for setup, usage, and architecture notes."
       : "No clear documentation files were detected.",
@@ -582,6 +611,8 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
     ],
     scores: [
       { label: "Repository structure", value: summary.sourceFolders.length ? 70 : 45, rationale: "Based on detected source folder structure." },
+      { label: "Code quality evidence", value: hasTests ? 55 : 25, rationale: "Based on test and script evidence, not full static analysis." },
+      { label: "Dependencies and configuration", value: summary.configFileCount ? 60 : 30, rationale: "Based on dependency/configuration files and scripts." },
       { label: "Documentation", value: hasDocs ? 55 : 20, rationale: "Based on documentation file evidence." },
       { label: "Testing", value: hasTests ? 55 : 15, rationale: "Based on test files and scripts." },
       { label: "Deployment readiness", value: hasDeployment ? 60 : 25, rationale: "Based on deployment file evidence." },
@@ -604,9 +635,9 @@ async function generateAiReport(summary: DeterministicSummary) {
   const response = await client.responses.create({
     model: MODEL,
     instructions:
-      "You are an AI-assisted software repository inspector. Use only the repository summary provided by deterministic scanning. Do not invent files, tools, metrics, deployment history, incidents, or code behavior. Separate facts from interpretation. For DORA, do not claim to measure DORA metrics directly; only assess repository evidence that supports delivery readiness.",
+      "You are an AI-assisted software repository inspector. Use only the repository summary provided by deterministic scanning. Do not invent files, tools, metrics, deployment history, incidents, or code behavior. Separate facts from interpretation. Include concise repository structure, architecture, code quality evidence, dependency/configuration, documentation, testing, maintainability, deployment, and DORA-inspired readiness observations. For code quality, comment only on repository evidence such as tests, scripts, structure, configuration, and maintainability signals; do not claim full static analysis, complexity measurement, vulnerability scanning, or duplication detection unless evidence exists. For DORA, do not claim to measure DORA metrics directly; only assess repository evidence that supports delivery readiness.",
     input: `Generate a concise software quality and maintainability inspection report for this repository summary:\n\n${buildCompactContext(summary)}`,
-    max_output_tokens: 2200,
+    max_output_tokens: 2800,
     text: {
       verbosity: "medium",
       format: {

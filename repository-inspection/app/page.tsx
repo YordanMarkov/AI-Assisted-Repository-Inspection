@@ -47,7 +47,10 @@ type InspectionResponse = {
   };
   report: {
     overview: string;
+    repositoryStructureAssessment: string;
     architectureSummary: string;
+    codeQualityAssessment: string;
+    dependencyAndConfigurationAssessment: string;
     documentationAssessment: string;
     testingAssessment: string;
     maintainabilityRisks: string[];
@@ -72,9 +75,11 @@ type InspectionResponse = {
 };
 
 type HistoryItem = {
+  id: string;
   name: string;
   date: string;
   score: string;
+  result: InspectionResponse;
 };
 
 const emptyHistory: HistoryItem[] = [];
@@ -132,8 +137,17 @@ Model: ${result.model}
 ## Project Overview
 ${report.overview}
 
+## Repository Structure Assessment
+${report.repositoryStructureAssessment}
+
 ## Architecture Summary
 ${report.architectureSummary}
+
+## Code Quality Assessment
+${report.codeQualityAssessment}
+
+## Dependency and Configuration Assessment
+${report.dependencyAndConfigurationAssessment}
 
 ## Documentation Assessment
 ${report.documentationAssessment}
@@ -176,9 +190,12 @@ export default function Home() {
     if (!savedHistory) return;
 
     try {
-      const parsedHistory = JSON.parse(savedHistory) as HistoryItem[];
+      const parsedHistory = JSON.parse(savedHistory) as Partial<HistoryItem>[];
       const realHistory = parsedHistory.filter(
-        (item) => !legacyMockHistoryNames.has(item.name.toLowerCase()),
+        (item): item is HistoryItem => {
+          if (!item.result || !item.name) return false;
+          return !legacyMockHistoryNames.has(item.name.toLowerCase());
+        },
       );
       window.localStorage.setItem(
         "inspection-history",
@@ -240,6 +257,18 @@ export default function Home() {
   const reportSections = result
     ? [
         { title: "Project Overview", body: result.report.overview },
+        {
+          title: "Repository Structure Assessment",
+          body: result.report.repositoryStructureAssessment,
+        },
+        {
+          title: "Code Quality Assessment",
+          body: result.report.codeQualityAssessment,
+        },
+        {
+          title: "Dependency and Configuration Assessment",
+          body: result.report.dependencyAndConfigurationAssessment,
+        },
         {
           title: "Documentation Assessment",
           body: result.report.documentationAssessment,
@@ -303,11 +332,15 @@ export default function Home() {
       ).toString();
       const nextHistory = [
         {
+          id: `${inspection.createdAt}-${inspection.summary.uploadedFileName}`,
           name: inspection.summary.uploadedFileName,
           date: formatDate(inspection.createdAt),
           score: averageScore,
+          result: inspection,
         },
-        ...history.filter((item) => item.name !== inspection.summary.uploadedFileName),
+        ...history.filter(
+          (item) => item.name !== inspection.summary.uploadedFileName,
+        ),
       ].slice(0, 6);
 
       setHistory(nextHistory);
@@ -337,6 +370,13 @@ export default function Home() {
       `${result.summary.projectName}-inspection.json`,
       JSON.stringify(result, null, 2),
     );
+  }
+
+  function handleOpenHistoryItem(item: HistoryItem) {
+    setResult(item.result);
+    setSelectedFile(null);
+    setErrorMessage("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function handlePrint() {
@@ -550,6 +590,33 @@ export default function Home() {
                 </section>
 
                 <section className="pretty-section">
+                  <h4>Repository Evidence</h4>
+                  <ul>
+                    <li>
+                      Documentation files:{" "}
+                      {result?.summary.documentationFiles.length ?? "--"}
+                    </li>
+                    <li>
+                      Test files: {result?.summary.testFiles.length ?? "--"}
+                    </li>
+                    <li>
+                      CI files: {result?.summary.ciFiles.length ?? "--"}
+                    </li>
+                    <li>
+                      Deployment files:{" "}
+                      {result?.summary.deploymentFiles.length ?? "--"}
+                    </li>
+                    <li>
+                      Package scripts:{" "}
+                      {result
+                        ? Object.keys(result.summary.packageScripts).join(", ") ||
+                          "None detected"
+                        : "--"}
+                    </li>
+                  </ul>
+                </section>
+
+                <section className="pretty-section">
                   <h4>Cost and Safety Filters</h4>
                   <ul>
                     <li>Maximum ZIP size: {result?.summary.safety.maxZipSizeMb || 60} MB</li>
@@ -692,11 +759,12 @@ export default function Home() {
                   history.map((item) => (
                     <button
                       className="history-item"
-                      key={`${item.name}-${item.date}`}
+                      key={item.id}
+                      onClick={() => handleOpenHistoryItem(item)}
                     >
                       <span>
                         <strong>{item.name}</strong>
-                        <small>{item.date}</small>
+                        <small>{item.date} - click to reopen</small>
                       </span>
                       <em>{item.score}</em>
                     </button>

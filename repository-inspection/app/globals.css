@@ -565,6 +565,11 @@ textarea {
   border-color: #99bfdc;
 }
 
+.history-item:focus-visible {
+  outline: 3px solid #99bfdc;
+  outline-offset: 2px;
+}
+
 .history-item strong,
 .history-item small {
   display: block;
