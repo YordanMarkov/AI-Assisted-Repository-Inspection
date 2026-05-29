@@ -2,6 +2,7 @@
 
 import type { ChangeEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { buildRepositorySummary } from "@/lib/repository-summary";
 
 const STEP_ORDER = ["upload", "extract", "summarize", "report"] as const;
 
@@ -310,17 +311,18 @@ export default function Home() {
     setResult(null);
 
     try {
-      const formData = new FormData();
-      formData.append("repository", selectedFile);
+      const summary = await buildRepositorySummary(selectedFile);
 
-      const response = await fetch("/api/inspect", {
+      const response = await fetch("/api/report", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summary }),
       });
-      const data = await response.json();
+      const responseText = await response.text();
+      const data = responseText ? JSON.parse(responseText) : {};
 
       if (!response.ok) {
-        throw new Error(data.error || "Inspection failed.");
+        throw new Error(data.error || responseText || "Inspection failed.");
       }
 
       const inspection = data as InspectionResponse;
