@@ -710,21 +710,6 @@ export default function Home() {
                   </ul>
                 </section>
 
-                <section className="pretty-section">
-                  <h4>Cost and Safety Filters</h4>
-                  <ul>
-                    <li>Maximum ZIP size: {result?.summary.safety.maxZipSizeMb || 60} MB</li>
-                    <li>
-                      Maximum files scanned:{" "}
-                      {result?.summary.safety.maxFilesToScan || 2500}
-                    </li>
-                    <li>
-                      Maximum AI context:{" "}
-                      {result?.summary.safety.maxContextChars || 28000} characters
-                    </li>
-                    <li>Private env files and generated folders are excluded.</li>
-                  </ul>
-                </section>
               </div>
             </section>
 
