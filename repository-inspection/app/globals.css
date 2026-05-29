@@ -484,6 +484,12 @@ textarea {
   line-height: 1.55;
 }
 
+.empty-state {
+  color: #61707d;
+  margin: 0;
+  line-height: 1.55;
+}
+
 .dora-note {
   color: #61707d;
   margin-bottom: 14px;
@@ -531,6 +537,13 @@ textarea {
   gap: 12px;
   margin-bottom: 10px;
   color: #234;
+}
+
+.score-rationale {
+  color: #61707d;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 10px 0 0;
 }
 
 .history-item {

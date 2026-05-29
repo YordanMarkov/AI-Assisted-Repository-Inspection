@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEvent } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const STEP_ORDER = ["upload", "extract", "summarize", "report"] as const;
 
@@ -12,128 +12,335 @@ const STEP_LABELS = {
   report: "Generate Report",
 };
 
-const scanFacts = [
-  { label: "Files scanned", value: "1,248" },
-  { label: "Ignored folders", value: "7" },
-  { label: "Config files", value: "12" },
-  { label: "Evidence signals", value: "19" },
-];
+type DoraStatus = "Strong" | "Partial" | "Weak" | "Missing";
 
-const scores = [
-  { label: "Repository structure", value: 82 },
-  { label: "Documentation", value: 58 },
-  { label: "Testing", value: 41 },
-  { label: "Deployment readiness", value: 64 },
-  { label: "DORA-inspired readiness", value: 55 },
-];
+type InspectionResponse = {
+  summary: {
+    projectName: string;
+    uploadedFileName: string;
+    fileCount: number;
+    ignoredPathCount: number;
+    scannedTextFileCount: number;
+    configFileCount: number;
+    evidenceSignalCount: number;
+    detectedStack: string[];
+    importantFiles: string[];
+    documentationFiles: string[];
+    testFiles: string[];
+    deploymentFiles: string[];
+    ciFiles: string[];
+    sourceFolders: string[];
+    packageScripts: Record<string, string>;
+    doraEvidence: {
+      continuousIntegration: string;
+      testAutomation: string;
+      deploymentAutomation: string;
+      monitoringRecovery: string;
+    };
+    safety: {
+      maxZipSizeMb: number;
+      maxFilesToScan: number;
+      maxTreeEntries: number;
+      maxContextChars: number;
+      excludedPaths: string[];
+    };
+  };
+  report: {
+    overview: string;
+    architectureSummary: string;
+    documentationAssessment: string;
+    testingAssessment: string;
+    maintainabilityRisks: string[];
+    deploymentReadiness: string;
+    doraReadiness: Array<{
+      label: string;
+      status: DoraStatus;
+      evidence: string;
+    }>;
+    suggestedImprovements: string[];
+    prioritizedActionPoints: string[];
+    scores: Array<{
+      label: string;
+      value: number;
+      rationale: string;
+    }>;
+    aiAccuracyNote: string;
+  };
+  model: string;
+  usedFallback: boolean;
+  createdAt: string;
+};
 
-const reportSections = [
-  {
-    title: "Project Overview",
-    body: "React frontend with Node tooling, a compact app directory, and visible build configuration. The repository is understandable, but onboarding would benefit from clearer setup notes.",
-  },
-  {
-    title: "Documentation Assessment",
-    body: "README exists but should include installation, environment variables, run commands, test commands, and a short architecture overview.",
-  },
-  {
-    title: "Architecture Summary",
-    body: "The app uses a compact frontend structure. The report should identify source folders, routing, API boundaries, storage layer evidence, and whether responsibilities are separated clearly.",
-  },
-  {
-    title: "Testing Assessment",
-    body: "No dedicated test folders or test script were detected in the current summary. Add focused unit tests around parsing, filtering, and report generation first.",
-  },
-  {
-    title: "Maintainability Risks",
-    body: "Main risks include missing automated tests, incomplete onboarding documentation, unclear deployment evidence, and limited architectural explanation.",
-  },
-  {
-    title: "Deployment Readiness",
-    body: "Build tooling is present. Add Docker, docker-compose, and CI workflow evidence before treating the project as deployment-ready.",
-  },
-  {
-    title: "Suggested Improvements",
-    body: "Prioritize parser tests, README setup instructions, CI checks, Docker Compose, report export validation, and a short architecture decision summary.",
-  },
-];
+type HistoryItem = {
+  name: string;
+  date: string;
+  score: string;
+};
 
-const doraSignals = [
-  {
-    label: "Continuous integration",
-    status: "Partial",
-    evidence: "Build and lint scripts are present; CI workflow evidence should be checked.",
-  },
-  {
-    label: "Test automation",
-    status: "Weak",
-    evidence: "No clear test suite detected in the current repository summary.",
-  },
-  {
-    label: "Deployment automation",
-    status: "Partial",
-    evidence: "Build tooling exists; Docker and deployment workflow evidence are expected.",
-  },
-  {
-    label: "Monitoring and recovery evidence",
-    status: "Missing",
-    evidence: "Repository inspection can flag missing observability files, but cannot measure incidents.",
-  },
-];
+const emptyHistory: HistoryItem[] = [];
+const legacyMockHistoryNames = new Set([
+  "portfolio-api.zip",
+  "experiment-4.zip",
+  "todo-react.zip",
+]);
 
-const history = [
-  { name: "portfolio-api.zip", date: "May 28, 2026", score: "74" },
-  { name: "experiment-4.zip", date: "May 24, 2026", score: "68" },
-  { name: "todo-react.zip", date: "May 19, 2026", score: "52" },
-];
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function downloadTextFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildMarkdown(result: InspectionResponse) {
+  const { summary, report } = result;
+  const scoreLines = report.scores
+    .map((score) => `- ${score.label}: ${score.value}/100 - ${score.rationale}`)
+    .join("\n");
+  const riskLines = report.maintainabilityRisks
+    .map((risk) => `- ${risk}`)
+    .join("\n");
+  const improvementLines = report.suggestedImprovements
+    .map((item) => `- ${item}`)
+    .join("\n");
+  const doraLines = report.doraReadiness
+    .map((item) => `- ${item.label}: ${item.status} - ${item.evidence}`)
+    .join("\n");
+  const actionLines = report.prioritizedActionPoints
+    .map((item, index) => `${index + 1}. ${item}`)
+    .join("\n");
+
+  return `# Repository Inspection Report
+
+Project: ${summary.projectName}
+Uploaded file: ${summary.uploadedFileName}
+Created at: ${formatDate(result.createdAt)}
+Model: ${result.model}
+
+## Project Overview
+${report.overview}
+
+## Architecture Summary
+${report.architectureSummary}
+
+## Documentation Assessment
+${report.documentationAssessment}
+
+## Testing Assessment
+${report.testingAssessment}
+
+## Maintainability Risks
+${riskLines}
+
+## Deployment Readiness
+${report.deploymentReadiness}
+
+## DORA-Inspired Delivery Readiness
+${doraLines}
+
+## Suggested Improvements
+${improvementLines}
+
+## Prioritized Action Points
+${actionLines}
+
+## Quality Scores
+${scoreLines}
+
+## AI Accuracy Note
+${report.aiAccuracyNote}
+`;
+}
 
 export default function Home() {
-  const [fileName, setFileName] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isInspecting, setIsInspecting] = useState(false);
-  const [hasReport, setHasReport] = useState(false);
+  const [result, setResult] = useState<InspectionResponse | null>(null);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [history, setHistory] = useState<HistoryItem[]>(emptyHistory);
+
+  useEffect(() => {
+    const savedHistory = window.localStorage.getItem("inspection-history");
+    if (!savedHistory) return;
+
+    try {
+      const parsedHistory = JSON.parse(savedHistory) as HistoryItem[];
+      const realHistory = parsedHistory.filter(
+        (item) => !legacyMockHistoryNames.has(item.name.toLowerCase()),
+      );
+      window.localStorage.setItem(
+        "inspection-history",
+        JSON.stringify(realHistory),
+      );
+      window.setTimeout(() => setHistory(realHistory), 0);
+    } catch {
+      window.setTimeout(() => setHistory(emptyHistory), 0);
+    }
+  }, []);
 
   const doneSteps = useMemo(() => {
-    if (hasReport) return STEP_ORDER;
+    if (result) return STEP_ORDER;
     if (isInspecting) return STEP_ORDER.slice(0, 3);
-    if (fileName) return STEP_ORDER.slice(0, 1);
+    if (selectedFile) return STEP_ORDER.slice(0, 1);
     return [];
-  }, [fileName, hasReport, isInspecting]);
+  }, [result, selectedFile, isInspecting]);
 
   const progress = Math.round((doneSteps.length / STEP_ORDER.length) * 100);
 
   const statusMessage = useMemo(() => {
+    if (errorMessage) return errorMessage;
+
     if (isInspecting) {
-      return "Filtering generated folders, reading project metadata, and preparing the AI context.";
+      return "Filtering generated folders, reading project metadata, and preparing compact AI context.";
     }
 
-    if (hasReport) {
-      return "Inspection complete. Review the deterministic summary, AI report, and action points below.";
+    if (result?.usedFallback) {
+      return "Inspection completed with deterministic fallback because AI generation was unavailable.";
     }
 
-    if (fileName) {
+    if (result) {
+      return "Inspection complete. Review deterministic facts, AI analysis, DORA readiness, and action points.";
+    }
+
+    if (selectedFile) {
       return "Repository selected. Start the inspection to generate a maintainability report.";
     }
 
     return "Upload a zipped software repository to begin the inspection pipeline.";
-  }, [fileName, hasReport, isInspecting]);
+  }, [errorMessage, result, selectedFile, isInspecting]);
+
+  const scanFacts = [
+    { label: "Files scanned", value: result?.summary.fileCount.toString() },
+    {
+      label: "Ignored paths",
+      value: result?.summary.ignoredPathCount.toString(),
+    },
+    {
+      label: "Config files",
+      value: result?.summary.configFileCount.toString(),
+    },
+    {
+      label: "Evidence signals",
+      value: result?.summary.evidenceSignalCount.toString(),
+    },
+  ];
+
+  const reportSections = result
+    ? [
+        { title: "Project Overview", body: result.report.overview },
+        {
+          title: "Documentation Assessment",
+          body: result.report.documentationAssessment,
+        },
+        {
+          title: "Architecture Summary",
+          body: result.report.architectureSummary,
+        },
+        { title: "Testing Assessment", body: result.report.testingAssessment },
+        {
+          title: "Maintainability Risks",
+          body: result.report.maintainabilityRisks.join(" "),
+        },
+        {
+          title: "Deployment Readiness",
+          body: result.report.deploymentReadiness,
+        },
+        {
+          title: "Suggested Improvements",
+          body: result.report.suggestedImprovements.join(" "),
+        },
+      ]
+    : [];
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setFileName(file.name);
-    setHasReport(false);
-    setIsInspecting(false);
+    setSelectedFile(file);
+    setResult(null);
+    setErrorMessage("");
   }
 
-  function startInspection() {
-    if (!fileName || isInspecting) return;
+  async function startInspection() {
+    if (!selectedFile || isInspecting) return;
 
     setIsInspecting(true);
-    window.setTimeout(() => {
+    setErrorMessage("");
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("repository", selectedFile);
+
+      const response = await fetch("/api/inspect", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Inspection failed.");
+      }
+
+      const inspection = data as InspectionResponse;
+      setResult(inspection);
+
+      const averageScore = Math.round(
+        inspection.report.scores.reduce((total, score) => total + score.value, 0) /
+          Math.max(inspection.report.scores.length, 1),
+      ).toString();
+      const nextHistory = [
+        {
+          name: inspection.summary.uploadedFileName,
+          date: formatDate(inspection.createdAt),
+          score: averageScore,
+        },
+        ...history.filter((item) => item.name !== inspection.summary.uploadedFileName),
+      ].slice(0, 6);
+
+      setHistory(nextHistory);
+      window.localStorage.setItem(
+        "inspection-history",
+        JSON.stringify(nextHistory),
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not complete repository inspection.",
+      );
+    } finally {
       setIsInspecting(false);
-      setHasReport(true);
-    }, 900);
+    }
+  }
+
+  function handleExportMarkdown() {
+    if (!result) return;
+    downloadTextFile(`${result.summary.projectName}-inspection.md`, buildMarkdown(result));
+  }
+
+  function handleDownloadJson() {
+    if (!result) return;
+    downloadTextFile(
+      `${result.summary.projectName}-inspection.json`,
+      JSON.stringify(result, null, 2),
+    );
+  }
+
+  function handlePrint() {
+    window.print();
   }
 
   return (
@@ -166,7 +373,7 @@ export default function Home() {
         <div className="selected-file-box">
           <span className="summary-label">Selected repository</span>
           <pre className="pipeline-input-preview">
-            {fileName || "No repository selected yet."}
+            {selectedFile?.name || "No repository selected yet."}
           </pre>
         </div>
 
@@ -174,17 +381,27 @@ export default function Home() {
           <button
             type="button"
             className="submit-button secondary-button pipeline-main-button"
-            disabled={!fileName || isInspecting}
+            disabled={!selectedFile || isInspecting}
             onClick={startInspection}
           >
             {isInspecting ? "Inspecting repository..." : "Run Inspection"}
           </button>
 
-          <button type="button" className="toggle-advanced-button">
+          <button
+            type="button"
+            className="toggle-advanced-button"
+            disabled={!result}
+            onClick={handleExportMarkdown}
+          >
             Export Markdown
           </button>
 
-          <button type="button" className="toggle-advanced-button">
+          <button
+            type="button"
+            className="toggle-advanced-button"
+            disabled={!result}
+            onClick={handlePrint}
+          >
             Print / Save PDF
           </button>
         </div>
@@ -233,17 +450,39 @@ export default function Home() {
         <section className="pipeline-card">
           <div className="pipeline-card-header">
             <div>
-              <h3>{fileName || "Current Inspection"}</h3>
+              <h3>
+                {result?.summary.projectName ||
+                  selectedFile?.name ||
+                  "Current Inspection"}
+              </h3>
               <p className="pipeline-meta">
                 Mode: ZIP upload analysis - Status:{" "}
-                {hasReport ? "Report ready" : "Waiting for inspection"}
+                {result ? `Report ready via ${result.model}` : "Waiting for inspection"}
               </p>
             </div>
 
             <div className="pipeline-header-actions">
-              <button className="mini-button">Download JSON</button>
-              <button className="mini-button">Download HTML</button>
-              <button className="mini-button">Print / Save PDF</button>
+              <button
+                className="mini-button"
+                disabled={!result}
+                onClick={handleDownloadJson}
+              >
+                Download JSON
+              </button>
+              <button
+                className="mini-button"
+                disabled={!result}
+                onClick={handleExportMarkdown}
+              >
+                Download Markdown
+              </button>
+              <button
+                className="mini-button"
+                disabled={!result}
+                onClick={handlePrint}
+              >
+                Print / Save PDF
+              </button>
             </div>
           </div>
 
@@ -274,16 +513,13 @@ export default function Home() {
             <section className="history-panel">
               <div className="panel-header">
                 <div className="panel-title">Deterministic Summary</div>
-                <div className="panel-actions">
-                  <button className="mini-button">Copy</button>
-                </div>
               </div>
 
               <div className="fact-grid">
                 {scanFacts.map((fact) => (
                   <div className="fact-card" key={fact.label}>
                     <span>{fact.label}</span>
-                    <strong>{hasReport ? fact.value : "--"}</strong>
+                    <strong>{fact.value || "--"}</strong>
                   </div>
                 ))}
               </div>
@@ -292,32 +528,40 @@ export default function Home() {
                 <section className="pretty-section">
                   <h4>Detected Stack</h4>
                   <ul>
-                    <li>TypeScript</li>
-                    <li>React</li>
-                    <li>Next.js</li>
-                    <li>Tailwind CSS</li>
+                    {(result?.summary.detectedStack.length
+                      ? result.summary.detectedStack
+                      : ["Run the inspection to detect technologies."]
+                    ).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
                   </ul>
                 </section>
 
                 <section className="pretty-section">
                   <h4>Important Files</h4>
                   <ul>
-                    <li>README and documentation files</li>
-                    <li>package.json</li>
-                    <li>tsconfig.json</li>
-                    <li>eslint.config.mjs</li>
-                    <li>Dockerfile, docker-compose, and CI workflows</li>
-                    <li>source folders and test folders</li>
+                    {(result?.summary.importantFiles.length
+                      ? result.summary.importantFiles.slice(0, 12)
+                      : ["README, package files, Docker files, CI workflows, source folders, and tests will appear here."]
+                    ).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
                   </ul>
                 </section>
 
                 <section className="pretty-section">
-                  <h4>Filtered Paths</h4>
+                  <h4>Cost and Safety Filters</h4>
                   <ul>
-                    <li>node_modules</li>
-                    <li>.git and .next</li>
-                    <li>dist, build, target</li>
-                    <li>media files and secret env values</li>
+                    <li>Maximum ZIP size: {result?.summary.safety.maxZipSizeMb || 60} MB</li>
+                    <li>
+                      Maximum files scanned:{" "}
+                      {result?.summary.safety.maxFilesToScan || 2500}
+                    </li>
+                    <li>
+                      Maximum AI context:{" "}
+                      {result?.summary.safety.maxContextChars || 28000} characters
+                    </li>
+                    <li>Private env files and generated folders are excluded.</li>
                   </ul>
                 </section>
               </div>
@@ -326,20 +570,21 @@ export default function Home() {
             <section className="history-panel">
               <div className="panel-header">
                 <div className="panel-title">AI Quality Report</div>
-                <div className="panel-actions">
-                  <button className="mini-button">Copy</button>
-                </div>
               </div>
 
               <div className="pretty-markdown">
-                {reportSections.map((section) => (
+                {(reportSections.length
+                  ? reportSections
+                  : [
+                      {
+                        title: "Waiting for Inspection",
+                        body: "Run the inspection to generate project overview, architecture, documentation, testing, maintainability, deployment, and improvement sections.",
+                      },
+                    ]
+                ).map((section) => (
                   <section className="pretty-section" key={section.title}>
                     <h4>{section.title}</h4>
-                    <p className="pretty-paragraph">
-                      {hasReport
-                        ? section.body
-                        : "Run the inspection to generate this report section."}
-                    </p>
+                    <p className="pretty-paragraph">{section.body}</p>
                   </section>
                 ))}
               </div>
@@ -360,17 +605,37 @@ export default function Home() {
             </p>
 
             <div className="dora-grid">
-              {doraSignals.map((signal) => (
+              {(result?.report.doraReadiness.length
+                ? result.report.doraReadiness
+                : [
+                    {
+                      label: "Continuous integration",
+                      status: "--",
+                      evidence: "Run the inspection to evaluate this signal.",
+                    },
+                    {
+                      label: "Test automation",
+                      status: "--",
+                      evidence: "Run the inspection to evaluate this signal.",
+                    },
+                    {
+                      label: "Deployment automation",
+                      status: "--",
+                      evidence: "Run the inspection to evaluate this signal.",
+                    },
+                    {
+                      label: "Monitoring and recovery evidence",
+                      status: "--",
+                      evidence: "Run the inspection to evaluate this signal.",
+                    },
+                  ]
+              ).map((signal) => (
                 <section className="pretty-section" key={signal.label}>
                   <div className="dora-heading">
                     <h4>{signal.label}</h4>
-                    <span>{hasReport ? signal.status : "--"}</span>
+                    <span>{signal.status}</span>
                   </div>
-                  <p className="pretty-paragraph">
-                    {hasReport
-                      ? signal.evidence
-                      : "Run the inspection to evaluate this delivery readiness signal."}
-                  </p>
+                  <p className="pretty-paragraph">{signal.evidence}</p>
                 </section>
               ))}
             </div>
@@ -383,18 +648,30 @@ export default function Home() {
               </div>
 
               <div className="score-list">
-                {scores.map((score) => (
+                {(result?.report.scores.length
+                  ? result.report.scores
+                  : [
+                      { label: "Repository structure", value: 0, rationale: "" },
+                      { label: "Documentation", value: 0, rationale: "" },
+                      { label: "Testing", value: 0, rationale: "" },
+                      { label: "Deployment readiness", value: 0, rationale: "" },
+                      { label: "DORA-inspired readiness", value: 0, rationale: "" },
+                    ]
+                ).map((score) => (
                   <div className="score-row" key={score.label}>
                     <div className="score-header">
                       <span>{score.label}</span>
-                      <strong>{hasReport ? score.value : "--"}/100</strong>
+                      <strong>{result ? score.value : "--"}/100</strong>
                     </div>
                     <div className="run-progress-bar">
                       <div
                         className="run-progress-fill"
-                        style={{ width: hasReport ? `${score.value}%` : "0%" }}
+                        style={{ width: result ? `${score.value}%` : "0%" }}
                       />
                     </div>
+                    {score.rationale ? (
+                      <p className="score-rationale">{score.rationale}</p>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -406,15 +683,25 @@ export default function Home() {
               </div>
 
               <div className="history-list">
-                {history.map((item) => (
-                  <button className="history-item" key={item.name}>
-                    <span>
-                      <strong>{item.name}</strong>
-                      <small>{item.date}</small>
-                    </span>
-                    <em>{item.score}</em>
-                  </button>
-                ))}
+                {history.length === 0 ? (
+                  <p className="empty-state">
+                    No repository reports yet. Run an inspection to add the
+                    first real result here.
+                  </p>
+                ) : (
+                  history.map((item) => (
+                    <button
+                      className="history-item"
+                      key={`${item.name}-${item.date}`}
+                    >
+                      <span>
+                        <strong>{item.name}</strong>
+                        <small>{item.date}</small>
+                      </span>
+                      <em>{item.score}</em>
+                    </button>
+                  ))
+                )}
               </div>
             </section>
           </div>
