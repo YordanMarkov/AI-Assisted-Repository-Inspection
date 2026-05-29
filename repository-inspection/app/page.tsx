@@ -32,6 +32,22 @@ type InspectionResponse = {
     ciFiles: string[];
     sourceFolders: string[];
     packageScripts: Record<string, string>;
+    readmeAnalysis: {
+      readmeFiles: string[];
+      detectedStackHints: string[];
+      qualitySignals: string[];
+      missingSignals: string[];
+    };
+    githubActivity?: {
+      recentCommitCount: number;
+      sampledCommitMessages: string[];
+      contributorCount: number;
+      topContributors: Array<{
+        login: string;
+        contributions: number;
+      }>;
+      collaborationSignals: string[];
+    };
     doraEvidence: {
       continuousIntegration: string;
       testAutomation: string;
@@ -52,6 +68,8 @@ type InspectionResponse = {
     architectureSummary: string;
     codeQualityAssessment: string;
     dependencyAndConfigurationAssessment: string;
+    readmeAssessment: string;
+    collaborationAssessment: string;
     documentationAssessment: string;
     testingAssessment: string;
     maintainabilityRisks: string[];
@@ -110,6 +128,10 @@ function downloadTextFile(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function getDoraStatusClass(status: string) {
+  return `dora-status ${status.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+}
+
 function buildMarkdown(result: InspectionResponse) {
   const { summary, report } = result;
   const scoreLines = report.scores
@@ -149,6 +171,12 @@ ${report.codeQualityAssessment}
 
 ## Dependency and Configuration Assessment
 ${report.dependencyAndConfigurationAssessment}
+
+## README Assessment
+${report.readmeAssessment}
+
+## Collaboration Assessment
+${report.collaborationAssessment}
 
 ## Documentation Assessment
 ${report.documentationAssessment}
@@ -271,6 +299,14 @@ export default function Home() {
         {
           title: "Dependency and Configuration Assessment",
           body: result.report.dependencyAndConfigurationAssessment,
+        },
+        {
+          title: "README Assessment",
+          body: result.report.readmeAssessment,
+        },
+        {
+          title: "Collaboration Assessment",
+          body: result.report.collaborationAssessment,
         },
         {
           title: "Documentation Assessment",
@@ -571,6 +607,19 @@ export default function Home() {
         </div>
       </section>
 
+      {isInspecting ? (
+        <section className="thinking-card" aria-live="polite">
+          <div className="thinking-spinner" aria-hidden="true" />
+          <div>
+            <h2>Inspection in progress</h2>
+            <p>
+              Reading repository evidence, building a compact summary, and
+              generating the maintainability report.
+            </p>
+          </div>
+        </section>
+      ) : null}
+
       <section className="history-wrapper">
         <div className="history-header">
           <h2>Repository Report</h2>
@@ -590,7 +639,7 @@ export default function Home() {
                   "Current Inspection"}
               </h3>
               <p className="pipeline-meta">
-                Mode: ZIP upload analysis - Status:{" "}
+                Mode: repository inspection - Status:{" "}
                 {result ? `Report ready via ${result.model}` : "Waiting for inspection"}
               </p>
             </div>
@@ -618,29 +667,6 @@ export default function Home() {
                 Print / Save PDF
               </button>
             </div>
-          </div>
-
-          <div className="run-progress-row">
-            <div className="run-progress-bar">
-              <div
-                className="run-progress-fill"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <span className="run-progress-text">{progress}% complete</span>
-          </div>
-
-          <div className="run-step-pill-row">
-            {STEP_ORDER.map((step) => (
-              <span
-                className={`run-step-pill ${
-                  doneSteps.includes(step) ? "done" : ""
-                }`}
-                key={step}
-              >
-                {STEP_LABELS[step]}
-              </span>
-            ))}
           </div>
 
           <div className="step-panels">
@@ -706,6 +732,50 @@ export default function Home() {
                         ? Object.keys(result.summary.packageScripts).join(", ") ||
                           "None detected"
                         : "--"}
+                    </li>
+                  </ul>
+                </section>
+
+                <section className="pretty-section">
+                  <h4>README Evidence</h4>
+                  <ul>
+                    <li>
+                      README files:{" "}
+                      {result?.summary.readmeAnalysis.readmeFiles.length ?? "--"}
+                    </li>
+                    <li>
+                      README stack hints:{" "}
+                      {result
+                        ? result.summary.readmeAnalysis.detectedStackHints.join(", ") ||
+                          "None detected"
+                        : "--"}
+                    </li>
+                    <li>
+                      README quality signals:{" "}
+                      {result
+                        ? result.summary.readmeAnalysis.qualitySignals.join(", ") ||
+                          "None detected"
+                        : "--"}
+                    </li>
+                  </ul>
+                </section>
+
+                <section className="pretty-section">
+                  <h4>GitHub Activity Evidence</h4>
+                  <ul>
+                    <li>
+                      Recent commits sampled:{" "}
+                      {result?.summary.githubActivity?.recentCommitCount ?? "Unavailable"}
+                    </li>
+                    <li>
+                      Sampled contributors:{" "}
+                      {result?.summary.githubActivity?.contributorCount ?? "Unavailable"}
+                    </li>
+                    <li>
+                      Commit messages:{" "}
+                      {result?.summary.githubActivity?.sampledCommitMessages
+                        .slice(0, 3)
+                        .join(" | ") || "Unavailable for local ZIP inspections"}
                     </li>
                   </ul>
                 </section>
@@ -779,7 +849,9 @@ export default function Home() {
                 <section className="pretty-section" key={signal.label}>
                   <div className="dora-heading">
                     <h4>{signal.label}</h4>
-                    <span>{signal.status}</span>
+                    <span className={getDoraStatusClass(signal.status)}>
+                      {signal.status}
+                    </span>
                   </div>
                   <p className="pretty-paragraph">{signal.evidence}</p>
                 </section>
@@ -845,7 +917,10 @@ export default function Home() {
                         <strong>{item.name}</strong>
                         <small>{item.date} - click to reopen</small>
                       </span>
-                      <em>{item.score}</em>
+                      <em title="Average quality score">
+                        <span>{item.score}</span>
+                        <small>avg score</small>
+                      </em>
                     </button>
                   ))
                 )}

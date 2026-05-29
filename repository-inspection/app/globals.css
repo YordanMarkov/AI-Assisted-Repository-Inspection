@@ -333,6 +333,48 @@ textarea {
   text-align: left;
 }
 
+.thinking-card {
+  width: 92%;
+  max-width: 1180px;
+  margin: 18px auto 0;
+  background: #fff;
+  border: 1px solid #99bfdc;
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(0, 88, 145, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  text-align: left;
+}
+
+.thinking-card h2 {
+  color: #234;
+  font-size: 22px;
+  margin: 0 0 6px;
+}
+
+.thinking-card p {
+  color: #61707d;
+  margin: 0;
+}
+
+.thinking-spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 4px solid #d9eaf7;
+  border-top-color: #007acc;
+  flex: 0 0 auto;
+  animation: spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .pipeline-status-header {
   display: flex;
   justify-content: space-between;
@@ -655,7 +697,7 @@ textarea {
   margin: 0;
 }
 
-.dora-heading span {
+.dora-status {
   background: #eef3f7;
   border: 1px solid #d9e2ea;
   border-radius: 999px;
@@ -664,6 +706,30 @@ textarea {
   font-weight: 700;
   padding: 5px 9px;
   white-space: nowrap;
+}
+
+.dora-status.strong {
+  background: #e7f4ee;
+  border-color: #b9dfcd;
+  color: #21664f;
+}
+
+.dora-status.partial {
+  background: #eaf5fd;
+  border-color: #99bfdc;
+  color: #005fa3;
+}
+
+.dora-status.weak {
+  background: #fff6dc;
+  border-color: #ead18b;
+  color: #8a6500;
+}
+
+.dora-status.missing {
+  background: #fdecec;
+  border-color: #f0b4b4;
+  color: #a33a3a;
 }
 
 .score-row {
@@ -725,11 +791,25 @@ textarea {
 .history-item em {
   background: #e7f4ee;
   border: 1px solid #b9dfcd;
-  border-radius: 999px;
+  border-radius: 10px;
   color: #21664f;
   font-style: normal;
   font-weight: 700;
+  min-width: 74px;
   padding: 6px 10px;
+  text-align: center;
+}
+
+.history-item em span,
+.history-item em small {
+  display: block;
+}
+
+.history-item em small {
+  color: #21664f;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 2px;
 }
 
 @media (max-width: 980px) {
@@ -781,5 +861,93 @@ textarea {
 
   .run-progress-text {
     text-align: left;
+  }
+}
+
+@media print {
+  body {
+    background: #ffffff;
+    color: #222222;
+  }
+
+  .input-form,
+  .pipeline-status-card,
+  .thinking-card,
+  .pipeline-header-actions,
+  .report-lower-grid .history-panel:last-child {
+    display: none !important;
+  }
+
+  .inspection-app {
+    margin: 0;
+    padding: 0;
+    text-align: left;
+  }
+
+  .inspection-app h1,
+  .instructions,
+  .history-wrapper {
+    max-width: none;
+    width: auto;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .inspection-app h1 {
+    font-size: 28px;
+    margin: 0 0 10px;
+  }
+
+  .instructions,
+  .history-header p,
+  .pipeline-meta {
+    color: #444444;
+  }
+
+  .history-wrapper {
+    margin-top: 18px;
+  }
+
+  .pipeline-card,
+  .history-panel,
+  .pretty-section,
+  .score-row,
+  .fact-card {
+    background: #ffffff !important;
+    border-color: #cccccc !important;
+    box-shadow: none !important;
+  }
+
+  .pipeline-card {
+    padding: 0;
+    border: none;
+  }
+
+  .step-panels,
+  .dora-grid,
+  .report-lower-grid {
+    display: block;
+  }
+
+  .history-panel,
+  .pretty-section,
+  .score-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 12px;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .fact-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .run-progress-bar,
+  .run-progress-fill,
+  .progress-bar-shell,
+  .progress-bar-fill {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 }

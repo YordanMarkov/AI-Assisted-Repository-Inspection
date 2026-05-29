@@ -11,6 +11,8 @@ type InspectionReport = {
   architectureSummary: string;
   codeQualityAssessment: string;
   dependencyAndConfigurationAssessment: string;
+  readmeAssessment: string;
+  collaborationAssessment: string;
   documentationAssessment: string;
   testingAssessment: string;
   maintainabilityRisks: string[];
@@ -39,6 +41,8 @@ const reportSchema = {
     "architectureSummary",
     "codeQualityAssessment",
     "dependencyAndConfigurationAssessment",
+    "readmeAssessment",
+    "collaborationAssessment",
     "documentationAssessment",
     "testingAssessment",
     "maintainabilityRisks",
@@ -55,6 +59,8 @@ const reportSchema = {
     architectureSummary: { type: "string" },
     codeQualityAssessment: { type: "string" },
     dependencyAndConfigurationAssessment: { type: "string" },
+    readmeAssessment: { type: "string" },
+    collaborationAssessment: { type: "string" },
     documentationAssessment: { type: "string" },
     testingAssessment: { type: "string" },
     maintainabilityRisks: { type: "array", items: { type: "string" } },
@@ -100,6 +106,8 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
     summary.testFiles.length > 0 || Boolean(summary.packageScripts.test);
   const hasDeployment = summary.deploymentFiles.length > 0;
   const hasCi = summary.ciFiles.length > 0;
+  const hasReadme = summary.readmeAnalysis.readmeFiles.length > 0;
+  const hasGitHubActivity = Boolean(summary.githubActivity);
 
   return {
     overview: `${summary.projectName} contains ${summary.fileCount} inspected files and uses ${summary.detectedStack.join(", ") || "an undetected stack"}.`,
@@ -118,6 +126,12 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
       summary.dependencies.length || summary.devDependencies.length
         ? "Dependency metadata was detected. Configuration quality should be reviewed for scripts, build commands, and clear environment setup."
         : "No dependency metadata was detected, so dependency and configuration health could not be assessed deeply.",
+    readmeAssessment: hasReadme
+      ? `README evidence was detected. Quality signals found: ${summary.readmeAnalysis.qualitySignals.join(", ") || "none"}. Missing or weak README signals: ${summary.readmeAnalysis.missingSignals.join(", ") || "none"}.`
+      : "No README file was detected, which weakens onboarding and project understanding.",
+    collaborationAssessment: hasGitHubActivity
+      ? `${summary.githubActivity?.recentCommitCount || 0} recent commits and ${summary.githubActivity?.contributorCount || 0} sampled contributors were found. Commit style and collaboration should be reviewed from the sampled evidence.`
+      : "Collaboration and commit-history evidence is unavailable for this inspection mode.",
     documentationAssessment: hasDocs
       ? "Documentation files were detected, but their completeness should be reviewed for setup, usage, and architecture notes."
       : "No clear documentation files were detected.",
@@ -127,6 +141,7 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
     maintainabilityRisks: [
       hasTests ? "Test depth still needs manual review." : "Missing automated testing evidence.",
       hasDocs ? "Documentation completeness is not guaranteed." : "Missing onboarding documentation.",
+      hasReadme ? "README may still omit important setup or architecture details." : "Missing README evidence.",
       hasDeployment ? "Deployment files should be validated." : "Missing deployment configuration evidence.",
     ],
     deploymentReadiness: hasDeployment
@@ -169,6 +184,8 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
       { label: "Repository structure", value: summary.sourceFolders.length ? 70 : 45, rationale: "Based on detected source folder structure." },
       { label: "Code quality evidence", value: hasTests ? 55 : 25, rationale: "Based on test and script evidence, not full static analysis." },
       { label: "Dependencies and configuration", value: summary.configFileCount ? 60 : 30, rationale: "Based on dependency/configuration files and scripts." },
+      { label: "README quality", value: hasReadme ? Math.min(80, 25 + summary.readmeAnalysis.qualitySignals.length * 8) : 10, rationale: "Based on README setup, usage, testing, deployment, and architecture signals." },
+      { label: "Collaboration evidence", value: hasGitHubActivity ? Math.min(80, 30 + (summary.githubActivity?.contributorCount || 0) * 8) : 0, rationale: "Based on public GitHub commit and contributor metadata when available." },
       { label: "Documentation", value: hasDocs ? 55 : 20, rationale: "Based on documentation file evidence." },
       { label: "Testing", value: hasTests ? 55 : 15, rationale: "Based on test files and scripts." },
       { label: "Deployment readiness", value: hasDeployment ? 60 : 25, rationale: "Based on deployment file evidence." },
@@ -188,7 +205,7 @@ async function generateAiReport(summary: DeterministicSummary) {
   const response = await client.responses.create({
     model: MODEL,
     instructions:
-      "You are an AI-assisted software repository inspector. Use only the repository summary provided by deterministic scanning. Do not invent files, tools, metrics, deployment history, incidents, or code behavior. Separate facts from interpretation. Include concise repository structure, architecture, code quality evidence, dependency/configuration, documentation, testing, maintainability, deployment, and DORA-inspired readiness observations. For code quality, comment only on repository evidence such as tests, scripts, structure, configuration, and maintainability signals; do not claim full static analysis, complexity measurement, vulnerability scanning, or duplication detection unless evidence exists. For DORA, do not claim to measure DORA metrics directly; only assess repository evidence that supports delivery readiness.",
+      "You are an AI-assisted software repository inspector. Use only the repository summary provided by deterministic scanning. Do not invent files, tools, metrics, deployment history, incidents, or code behavior. Separate facts from interpretation. Include concise repository structure, architecture, code quality evidence, dependency/configuration, README quality, documentation, testing, collaboration/commit-history evidence when available, maintainability, deployment, and DORA-inspired readiness observations. You may use README-derived stack hints, but clearly treat them as README evidence instead of confirmed dependency evidence. For code quality, comment only on repository evidence such as tests, scripts, structure, configuration, and maintainability signals; do not claim full static analysis, complexity measurement, vulnerability scanning, or duplication detection unless evidence exists. For collaboration, use only sampled public GitHub commit/contributor metadata and avoid judging individual developers. For DORA, do not claim to measure DORA metrics directly; only assess repository evidence that supports delivery readiness.",
     input: `Generate a concise software quality and maintainability inspection report for this repository summary:\n\n${buildCompactContext(summary)}`,
     max_output_tokens: 2800,
     text: {

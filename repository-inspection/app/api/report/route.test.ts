@@ -21,6 +21,29 @@ const summary: DeterministicSummary = {
   packageScripts: { build: "next build", test: "vitest run" },
   dependencies: ["next", "react"],
   devDependencies: ["vitest"],
+  readmeAnalysis: {
+    readmeFiles: ["README.md"],
+    detectedStackHints: ["React", "Next.js"],
+    qualitySignals: [
+      "Project purpose explained",
+      "Installation or setup instructions",
+      "Test instructions",
+    ],
+    missingSignals: ["Architecture or folder structure mentioned"],
+  },
+  githubActivity: {
+    recentCommitCount: 3,
+    sampledCommitMessages: ["Add tests", "Improve README", "Fix build"],
+    contributorCount: 2,
+    topContributors: [
+      { login: "alice", contributions: 10 },
+      { login: "bob", contributions: 3 },
+    ],
+    collaborationSignals: [
+      "3 recent commits sampled.",
+      "2 contributors found in the sampled contributor list.",
+    ],
+  },
   doraEvidence: {
     continuousIntegration: "CI workflow files were detected.",
     testAutomation: "A test script was detected in package metadata.",
@@ -67,10 +90,14 @@ describe("repository report API", () => {
     expect(body.summary.uploadedFileName).toBe("sample.zip");
     expect(body.report.repositoryStructureAssessment).toContain("src");
     expect(body.report.codeQualityAssessment).toContain("code quality");
+    expect(body.report.readmeAssessment).toContain("README");
+    expect(body.report.collaborationAssessment).toContain("recent commits");
     expect(body.report.scores.map((score: { label: string }) => score.label)).toEqual(
       expect.arrayContaining([
         "Code quality evidence",
         "Dependencies and configuration",
+        "README quality",
+        "Collaboration evidence",
       ]),
     );
   });

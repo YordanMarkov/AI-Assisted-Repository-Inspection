@@ -98,6 +98,22 @@ export type DeterministicSummary = {
   packageScripts: Record<string, string>;
   dependencies: string[];
   devDependencies: string[];
+  readmeAnalysis: {
+    readmeFiles: string[];
+    detectedStackHints: string[];
+    qualitySignals: string[];
+    missingSignals: string[];
+  };
+  githubActivity?: {
+    recentCommitCount: number;
+    sampledCommitMessages: string[];
+    contributorCount: number;
+    topContributors: Array<{
+      login: string;
+      contributions: number;
+    }>;
+    collaborationSignals: string[];
+  };
   doraEvidence: {
     continuousIntegration: string;
     testAutomation: string;
@@ -209,7 +225,62 @@ function parsePackageJson(excerpts: ImportantFile[]) {
   }
 }
 
-function detectStack(paths: string[], packageJson: PackageJson | null) {
+function detectReadmeSignals(readmeFiles: ImportantFile[]) {
+  const text = readmeFiles.map((file) => file.excerpt).join("\n").toLowerCase();
+  const stackHints: string[] = [];
+  const qualitySignals: string[] = [];
+  const missingSignals: string[] = [];
+
+  const stackMatchers: Array<[string, RegExp]> = [
+    ["React", /\breact\b/],
+    ["Next.js", /\bnext\.?js\b/],
+    ["Vue", /\bvue\b/],
+    ["Angular", /\bangular\b/],
+    ["Svelte", /\bsvelte\b/],
+    ["Node.js", /\bnode(\.js)?\b/],
+    ["Express", /\bexpress\b/],
+    ["TypeScript", /\btypescript\b|\btsx?\b/],
+    ["Python", /\bpython\b|\bpip\b|\bpytest\b/],
+    ["Java", /\bjava\b|\bmaven\b|\bgradle\b/],
+    ["Docker", /\bdocker\b|\bdocker compose\b/],
+    ["MySQL", /\bmysql\b/],
+    ["PostgreSQL", /\bpostgres(ql)?\b/],
+  ];
+
+  for (const [label, matcher] of stackMatchers) {
+    if (matcher.test(text)) stackHints.push(label);
+  }
+
+  const qualityMatchers: Array<[string, RegExp]> = [
+    ["Project purpose explained", /#\s+.+|overview|about|purpose/],
+    ["Installation or setup instructions", /install|setup|getting started/],
+    ["Run or development commands", /npm run|yarn|pnpm|dev server|run locally/],
+    ["Test instructions", /test|vitest|jest|pytest|coverage/],
+    ["Environment configuration mentioned", /\.env|environment|api key|config/],
+    ["Deployment instructions", /deploy|vercel|docker|production/],
+    ["Architecture or folder structure mentioned", /architecture|structure|folder|directory/],
+  ];
+
+  for (const [label, matcher] of qualityMatchers) {
+    if (matcher.test(text)) {
+      qualitySignals.push(label);
+    } else {
+      missingSignals.push(label);
+    }
+  }
+
+  return {
+    detectedStackHints: unique(stackHints),
+    qualitySignals,
+    missingSignals,
+  };
+}
+
+function detectStack(
+  paths: string[],
+  packageJson: PackageJson | null,
+  readmeStackHints: string[],
+) {
   const stack = new Set<string>();
   const allDeps = {
     ...(packageJson?.dependencies || {}),
@@ -259,6 +330,9 @@ function detectStack(paths: string[], packageJson: PackageJson | null) {
   }
   if (paths.some((path) => path.includes(".github/workflows/"))) {
     stack.add("GitHub Actions");
+  }
+  for (const hint of readmeStackHints) {
+    stack.add(`${hint} (README)`);
   }
 
   return unique([...stack]);
@@ -317,6 +391,7 @@ function countEvidenceSignals(
     summary.testFiles.length,
     summary.deploymentFiles.length,
     summary.ciFiles.length,
+    summary.readmeAnalysis.qualitySignals.length,
     Object.keys(summary.packageScripts).length,
   ].reduce((total, count) => total + count, 0);
 }
@@ -358,6 +433,10 @@ export async function buildRepositorySummary(file: File): Promise<DeterministicS
   }
 
   const packageJson = parsePackageJson(importantFiles);
+  const readmeFiles = importantFiles.filter((file) =>
+    file.path.toLowerCase().endsWith("readme.md"),
+  );
+  const readmeSignals = detectReadmeSignals(readmeFiles);
   const lowerPaths = paths.map((path) => path.toLowerCase());
   const documentationFiles = paths.filter((path) => {
     const lower = path.toLowerCase();
@@ -425,7 +504,11 @@ export async function buildRepositorySummary(file: File): Promise<DeterministicS
       ),
     ).length,
     fileTree: paths.slice(0, MAX_TREE_ENTRIES),
-    detectedStack: detectStack(paths, packageJson),
+    detectedStack: detectStack(
+      paths,
+      packageJson,
+      readmeSignals.detectedStackHints,
+    ),
     importantFiles: importantFiles.map((file) => file.path),
     documentationFiles,
     testFiles,
@@ -435,6 +518,10 @@ export async function buildRepositorySummary(file: File): Promise<DeterministicS
     packageScripts: packageJson?.scripts || {},
     dependencies: unique(Object.keys(packageJson?.dependencies || {})).slice(0, 60),
     devDependencies: unique(Object.keys(packageJson?.devDependencies || {})).slice(0, 60),
+    readmeAnalysis: {
+      readmeFiles: readmeFiles.map((file) => file.path),
+      ...readmeSignals,
+    },
     doraEvidence: buildDoraEvidence(paths, packageJson),
     importantFileExcerpts: importantFiles,
     safety: {

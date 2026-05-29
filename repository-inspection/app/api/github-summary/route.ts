@@ -54,6 +54,60 @@ async function getDefaultBranch(owner: string, repo: string) {
   return data.default_branch || "main";
 }
 
+async function getGitHubActivity(owner: string, repo: string) {
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "repository-inspection-experiment",
+  };
+
+  const [commitsResponse, contributorsResponse] = await Promise.all([
+    fetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=20`, {
+      headers,
+    }),
+    fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contributors?per_page=10`,
+      { headers },
+    ),
+  ]);
+
+  const commits = commitsResponse.ok
+    ? ((await commitsResponse.json()) as Array<{
+        commit?: { message?: string };
+      }>)
+    : [];
+  const contributors = contributorsResponse.ok
+    ? ((await contributorsResponse.json()) as Array<{
+        login?: string;
+        contributions?: number;
+      }>)
+    : [];
+  const topContributors = contributors
+    .filter((contributor) => contributor.login)
+    .map((contributor) => ({
+      login: contributor.login || "unknown",
+      contributions: contributor.contributions || 0,
+    }));
+  const collaborationSignals = [
+    commits.length > 0
+      ? `${commits.length} recent commits sampled.`
+      : "No recent commit sample was available.",
+    topContributors.length > 1
+      ? `${topContributors.length} contributors found in the sampled contributor list.`
+      : "Contributor sample suggests limited visible collaboration.",
+  ];
+
+  return {
+    recentCommitCount: commits.length,
+    sampledCommitMessages: commits
+      .map((commit) => commit.commit?.message?.split("\n")[0] || "")
+      .filter(Boolean)
+      .slice(0, 8),
+    contributorCount: topContributors.length,
+    topContributors,
+    collaborationSignals,
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const { url } = (await request.json()) as { url?: string };
@@ -104,12 +158,17 @@ export async function POST(request: Request) {
       { type: "application/zip" },
     );
     const summary = await buildRepositorySummary(file);
+    const githubActivity = await getGitHubActivity(
+      repoReference.owner,
+      repoReference.repo,
+    );
 
     return Response.json({
       summary: {
         ...summary,
         projectName: `${repoReference.owner}/${repoReference.repo}`,
         uploadedFileName: `${repoReference.owner}/${repoReference.repo} (${branch})`,
+        githubActivity,
       },
       source: {
         type: "github",
