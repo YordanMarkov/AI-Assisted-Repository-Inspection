@@ -181,6 +181,8 @@ ${report.aiAccuracyNote}
 
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [githubUrl, setGithubUrl] = useState("");
+  const [inputMode, setInputMode] = useState<"zip" | "github">("github");
   const [isInspecting, setIsInspecting] = useState(false);
   const [result, setResult] = useState<InspectionResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -211,9 +213,9 @@ export default function Home() {
   const doneSteps = useMemo(() => {
     if (result) return STEP_ORDER;
     if (isInspecting) return STEP_ORDER.slice(0, 3);
-    if (selectedFile) return STEP_ORDER.slice(0, 1);
+    if (selectedFile || githubUrl.trim()) return STEP_ORDER.slice(0, 1);
     return [];
-  }, [result, selectedFile, isInspecting]);
+  }, [githubUrl, result, selectedFile, isInspecting]);
 
   const progress = Math.round((doneSteps.length / STEP_ORDER.length) * 100);
 
@@ -232,12 +234,12 @@ export default function Home() {
       return "Inspection complete. Review deterministic facts, AI analysis, DORA readiness, and action points.";
     }
 
-    if (selectedFile) {
+    if (selectedFile || githubUrl.trim()) {
       return "Repository selected. Start the inspection to generate a maintainability report.";
     }
 
-    return "Upload a zipped software repository to begin the inspection pipeline.";
-  }, [errorMessage, result, selectedFile, isInspecting]);
+    return "Upload a zipped software repository or enter a public GitHub repository URL to begin.";
+  }, [errorMessage, githubUrl, result, selectedFile, isInspecting]);
 
   const scanFacts = [
     { label: "Files scanned", value: result?.summary.fileCount.toString() },
@@ -303,15 +305,26 @@ export default function Home() {
     setErrorMessage("");
   }
 
+  function handleGithubUrlChange(event: ChangeEvent<HTMLInputElement>) {
+    setGithubUrl(event.target.value);
+    setResult(null);
+    setErrorMessage("");
+  }
+
   async function startInspection() {
-    if (!selectedFile || isInspecting) return;
+    if (isInspecting) return;
+    if (inputMode === "zip" && !selectedFile) return;
+    if (inputMode === "github" && !githubUrl.trim()) return;
 
     setIsInspecting(true);
     setErrorMessage("");
     setResult(null);
 
     try {
-      const summary = await buildRepositorySummary(selectedFile);
+      const summary =
+        inputMode === "zip"
+          ? await buildRepositorySummary(selectedFile as File)
+          : await fetchGithubSummary(githubUrl);
 
       const response = await fetch("/api/report", {
         method: "POST",
@@ -361,6 +374,22 @@ export default function Home() {
     }
   }
 
+  async function fetchGithubSummary(url: string) {
+    const response = await fetch("/api/github-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const responseText = await response.text();
+    const data = responseText ? JSON.parse(responseText) : {};
+
+    if (!response.ok) {
+      throw new Error(data.error || responseText || "GitHub inspection failed.");
+    }
+
+    return data.summary;
+  }
+
   function handleExportMarkdown() {
     if (!result) return;
     downloadTextFile(`${result.summary.projectName}-inspection.md`, buildMarkdown(result));
@@ -390,32 +419,92 @@ export default function Home() {
       <h1>AI-Assisted Repository Inspection</h1>
 
       <p className="instructions">
-        Upload a zipped software repository. The system will inspect the project
-        structure, detect technology indicators, summarize important files, and
-        generate a software quality and maintainability report, including a
-        DORA-inspired delivery readiness view.
+        Upload a zipped software repository or inspect a public GitHub
+        repository. The system will inspect the project structure, detect
+        technology indicators, summarize important files, and generate a
+        software quality and maintainability report, including a DORA-inspired
+        delivery readiness view.
       </p>
 
       <section className="input-form" aria-label="Repository upload form">
-        <label className="zip-dropzone">
-          <span className="zip-dropzone-icon">+</span>
-          <span className="zip-dropzone-title">Upload zipped repository</span>
-          <span className="zip-dropzone-help">
-            ZIP files only. Folders such as node_modules, .git, dist, build,
-            target, and private environment values are excluded from inspection.
-          </span>
-          <input
-            className="sr-only"
-            type="file"
-            accept=".zip,application/zip"
-            onChange={handleFileChange}
-          />
-        </label>
+        <div className="input-mode-section">
+          <div className="input-mode-label">Choose inspection source</div>
+          <div className="input-choice-grid" aria-label="Repository input mode">
+          <button
+            className={
+              inputMode === "zip" ? "input-choice active" : "input-choice"
+            }
+            type="button"
+            onClick={() => setInputMode("zip")}
+          >
+            <span className="choice-title">Local ZIP upload</span>
+            <span className="choice-description">
+              Inspect a repository archive from your computer.
+            </span>
+          </button>
+          <button
+            className={
+              inputMode === "github" ? "input-choice active" : "input-choice"
+            }
+            type="button"
+            onClick={() => setInputMode("github")}
+          >
+            <span className="choice-title">Public GitHub repository</span>
+            <span className="choice-description">
+              Paste a github.com URL and inspect it directly.
+            </span>
+          </button>
+          </div>
+        </div>
+
+        {inputMode === "zip" ? (
+          <label className="zip-dropzone">
+            <span className="zip-dropzone-icon">+</span>
+            <span className="zip-dropzone-title">Upload zipped repository</span>
+            <span className="zip-dropzone-help">
+              ZIP files only. Folders such as node_modules, .git, dist, build,
+              target, and private environment values are excluded from inspection.
+            </span>
+            <input
+              className="sr-only"
+              type="file"
+              accept=".zip,application/zip"
+              onChange={handleFileChange}
+            />
+          </label>
+        ) : (
+          <div className="github-input-box">
+            <div className="github-input-header">
+              <span className="github-input-icon">GH</span>
+              <div>
+                <label htmlFor="github-url">
+                  Public GitHub repository URL
+                </label>
+                <p>
+                  Example: https://github.com/vercel/next.js
+                </p>
+              </div>
+            </div>
+            <input
+              id="github-url"
+              type="url"
+              value={githubUrl}
+              onChange={handleGithubUrlChange}
+              placeholder="https://github.com/owner/repository"
+            />
+            <p className="github-input-note">
+              Public repositories only. Large repositories still use the same 60
+              MB ZIP limit and compact AI context cap.
+            </p>
+          </div>
+        )}
 
         <div className="selected-file-box">
           <span className="summary-label">Selected repository</span>
           <pre className="pipeline-input-preview">
-            {selectedFile?.name || "No repository selected yet."}
+            {inputMode === "zip"
+              ? selectedFile?.name || "No repository selected yet."
+              : githubUrl || "No GitHub repository URL entered yet."}
           </pre>
         </div>
 
@@ -423,7 +512,10 @@ export default function Home() {
           <button
             type="button"
             className="submit-button secondary-button pipeline-main-button"
-            disabled={!selectedFile || isInspecting}
+            disabled={
+              isInspecting ||
+              (inputMode === "zip" ? !selectedFile : !githubUrl.trim())
+            }
             onClick={startInspection}
           >
             {isInspecting ? "Inspecting repository..." : "Run Inspection"}
@@ -494,7 +586,7 @@ export default function Home() {
             <div>
               <h3>
                 {result?.summary.projectName ||
-                  selectedFile?.name ||
+                  (inputMode === "zip" ? selectedFile?.name : githubUrl) ||
                   "Current Inspection"}
               </h3>
               <p className="pipeline-meta">
