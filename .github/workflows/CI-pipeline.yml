@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    env:
+      NODE_VERSION: "22"
+      APP_DIR: repository-inspection
+
+    steps:
+      - name: 1) Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 2) Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
+
+      - name: 3) Install dependencies
+        working-directory: ${{ env.APP_DIR }}
+        run: npm ci
+
+      - name: 4) Run lint checks
+        working-directory: ${{ env.APP_DIR }}
+        run: npm run lint
+
+      - name: 5) Build Next.js application
+        working-directory: ${{ env.APP_DIR }}
+        run: npm run build
