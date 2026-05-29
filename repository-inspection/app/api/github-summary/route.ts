@@ -108,6 +108,26 @@ async function getGitHubActivity(owner: string, repo: string) {
   };
 }
 
+async function getGitHubLanguages(owner: string, repo: string) {
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/languages`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "repository-inspection-experiment",
+      },
+    },
+  );
+
+  if (!response.ok) return [];
+
+  const languages = (await response.json()) as Record<string, number>;
+  return Object.entries(languages)
+    .sort(([, a], [, b]) => b - a)
+    .map(([language]) => language)
+    .slice(0, 8);
+}
+
 export async function POST(request: Request) {
   try {
     const { url } = (await request.json()) as { url?: string };
@@ -158,16 +178,23 @@ export async function POST(request: Request) {
       { type: "application/zip" },
     );
     const summary = await buildRepositorySummary(file);
-    const githubActivity = await getGitHubActivity(
-      repoReference.owner,
-      repoReference.repo,
-    );
+    const [githubActivity, githubLanguages] = await Promise.all([
+      getGitHubActivity(repoReference.owner, repoReference.repo),
+      getGitHubLanguages(repoReference.owner, repoReference.repo),
+    ]);
 
     return Response.json({
       summary: {
         ...summary,
         projectName: `${repoReference.owner}/${repoReference.repo}`,
         uploadedFileName: `${repoReference.owner}/${repoReference.repo} (${branch})`,
+        detectedStack: [
+          ...new Set([
+            ...summary.detectedStack,
+            ...githubLanguages.map((language) => `${language} (GitHub)`),
+          ]),
+        ].sort((a, b) => a.localeCompare(b)),
+        githubLanguages,
         githubActivity,
       },
       source: {

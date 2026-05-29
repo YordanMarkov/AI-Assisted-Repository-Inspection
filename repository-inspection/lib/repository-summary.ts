@@ -89,6 +89,7 @@ export type DeterministicSummary = {
   evidenceSignalCount: number;
   fileTree: string[];
   detectedStack: string[];
+  githubLanguages?: string[];
   importantFiles: string[];
   documentationFiles: string[];
   testFiles: string[];
@@ -225,8 +226,43 @@ function parsePackageJson(excerpts: ImportantFile[]) {
   }
 }
 
+function parsePackageJsonFiles(excerpts: ImportantFile[]) {
+  return excerpts
+    .filter((file) => file.path.toLowerCase().endsWith("package.json"))
+    .map((file) => {
+      try {
+        return JSON.parse(file.excerpt) as PackageJson;
+      } catch {
+        return null;
+      }
+    })
+    .filter((file): file is PackageJson => Boolean(file));
+}
+
+function mergePackageJsonFiles(packageJsonFiles: PackageJson[]) {
+  return packageJsonFiles.reduce<PackageJson>(
+    (merged, current) => ({
+      name: merged.name || current.name,
+      scripts: { ...(merged.scripts || {}), ...(current.scripts || {}) },
+      dependencies: {
+        ...(merged.dependencies || {}),
+        ...(current.dependencies || {}),
+      },
+      devDependencies: {
+        ...(merged.devDependencies || {}),
+        ...(current.devDependencies || {}),
+      },
+    }),
+    {},
+  );
+}
+
 function detectReadmeSignals(readmeFiles: ImportantFile[]) {
-  const text = readmeFiles.map((file) => file.excerpt).join("\n").toLowerCase();
+  const text = readmeFiles
+    .map((file) => file.excerpt)
+    .join("\n")
+    .replace(/[-_*`#[\]()>|]/g, " ")
+    .toLowerCase();
   const stackHints: string[] = [];
   const qualitySignals: string[] = [];
   const missingSignals: string[] = [];
@@ -237,14 +273,34 @@ function detectReadmeSignals(readmeFiles: ImportantFile[]) {
     ["Vue", /\bvue\b/],
     ["Angular", /\bangular\b/],
     ["Svelte", /\bsvelte\b/],
+    ["Astro", /\bastro\b/],
+    ["Vite", /\bvite\b/],
     ["Node.js", /\bnode(\.js)?\b/],
     ["Express", /\bexpress\b/],
+    ["NestJS", /\bnest(js)?\b/],
     ["TypeScript", /\btypescript\b|\btsx?\b/],
+    ["JavaScript", /\bjavascript\b|\bjsx\b/],
+    ["Tailwind CSS", /\btailwind\b/],
+    ["Bootstrap", /\bbootstrap\b/],
     ["Python", /\bpython\b|\bpip\b|\bpytest\b/],
+    ["Django", /\bdjango\b/],
+    ["Flask", /\bflask\b/],
     ["Java", /\bjava\b|\bmaven\b|\bgradle\b/],
+    ["Spring", /\bspring\b/],
+    ["C#", /\bc#\b|\bdotnet\b|\.net\b/],
+    ["PHP", /\bphp\b/],
+    ["Laravel", /\blaravel\b/],
+    ["Ruby", /\bruby\b|\brails\b/],
+    ["Go", /\bgolang\b|\bgo\b/],
+    ["Rust", /\brust\b/],
     ["Docker", /\bdocker\b|\bdocker compose\b/],
     ["MySQL", /\bmysql\b/],
     ["PostgreSQL", /\bpostgres(ql)?\b/],
+    ["MongoDB", /\bmongodb\b|\bmongo\b/],
+    ["Firebase", /\bfirebase\b/],
+    ["Supabase", /\bsupabase\b/],
+    ["Prisma", /\bprisma\b/],
+    ["GraphQL", /\bgraphql\b/],
   ];
 
   for (const [label, matcher] of stackMatchers) {
@@ -286,6 +342,15 @@ function detectStack(
     ...(packageJson?.dependencies || {}),
     ...(packageJson?.devDependencies || {}),
   };
+  const extensionCounts = paths.reduce<Record<string, number>>((counts, path) => {
+    const extension = getExtension(path);
+    if (!extension) return counts;
+    counts[extension] = (counts[extension] || 0) + 1;
+    return counts;
+  }, {});
+  const hasDep = (...names: string[]) =>
+    names.some((name) => Boolean(allDeps[name]));
+  const hasPath = (matcher: RegExp) => paths.some((path) => matcher.test(path.toLowerCase()));
 
   if (paths.some((path) => path.endsWith("package.json"))) stack.add("Node.js");
   if (
@@ -315,6 +380,22 @@ function detectStack(
   if (allDeps.tailwindcss || paths.some((path) => path.includes("tailwind"))) {
     stack.add("Tailwind CSS");
   }
+  if (hasDep("vite") || hasPath(/vite\.config\.(js|ts|mjs|mts)$/)) stack.add("Vite");
+  if (hasDep("@angular/core") || hasPath(/angular\.json$/)) stack.add("Angular");
+  if (hasDep("vue") || extensionCounts[".vue"]) stack.add("Vue");
+  if (hasDep("svelte") || hasPath(/svelte\.config\.(js|ts)$/) || extensionCounts[".svelte"]) {
+    stack.add("Svelte");
+  }
+  if (hasDep("astro") || hasPath(/astro\.config\.(js|ts|mjs)$/) || extensionCounts[".astro"]) {
+    stack.add("Astro");
+  }
+  if (hasDep("express")) stack.add("Express");
+  if (hasDep("@nestjs/core")) stack.add("NestJS");
+  if (hasDep("prisma", "@prisma/client")) stack.add("Prisma");
+  if (hasDep("mongodb", "mongoose")) stack.add("MongoDB");
+  if (hasDep("firebase")) stack.add("Firebase");
+  if (hasDep("@supabase/supabase-js")) stack.add("Supabase");
+  if (hasDep("graphql", "@apollo/client", "apollo-server")) stack.add("GraphQL");
   if (paths.some((path) => path.endsWith("pom.xml"))) stack.add("Java / Maven");
   if (
     paths.some(
@@ -325,6 +406,18 @@ function detectStack(
   }
   if (paths.some((path) => path.endsWith("go.mod"))) stack.add("Go");
   if (paths.some((path) => path.endsWith("Cargo.toml"))) stack.add("Rust");
+  if (extensionCounts[".py"]) stack.add("Python");
+  if (extensionCounts[".java"]) stack.add("Java");
+  if (extensionCounts[".cs"] || hasPath(/\.csproj$/)) stack.add("C# / .NET");
+  if (extensionCounts[".php"] || hasPath(/composer\.json$/)) stack.add("PHP");
+  if (extensionCounts[".rb"] || hasPath(/gemfile$/)) stack.add("Ruby");
+  if (extensionCounts[".go"]) stack.add("Go");
+  if (extensionCounts[".rs"]) stack.add("Rust");
+  if (extensionCounts[".swift"]) stack.add("Swift");
+  if (extensionCounts[".kt"] || extensionCounts[".kts"]) stack.add("Kotlin");
+  if (extensionCounts[".dart"] || hasPath(/pubspec\.yaml$/)) stack.add("Dart");
+  if (extensionCounts[".html"]) stack.add("HTML");
+  if (extensionCounts[".css"] || extensionCounts[".scss"]) stack.add("CSS");
   if (paths.some((path) => path.toLowerCase().includes("dockerfile"))) {
     stack.add("Docker");
   }
@@ -432,7 +525,10 @@ export async function buildRepositorySummary(file: File): Promise<DeterministicS
     });
   }
 
-  const packageJson = parsePackageJson(importantFiles);
+  const packageJsonFiles = parsePackageJsonFiles(importantFiles);
+  const packageJson = packageJsonFiles.length
+    ? mergePackageJsonFiles(packageJsonFiles)
+    : parsePackageJson(importantFiles);
   const readmeFiles = importantFiles.filter((file) =>
     file.path.toLowerCase().endsWith("readme.md"),
   );

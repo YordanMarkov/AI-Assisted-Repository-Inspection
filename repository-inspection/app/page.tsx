@@ -25,6 +25,7 @@ type InspectionResponse = {
     configFileCount: number;
     evidenceSignalCount: number;
     detectedStack: string[];
+    githubLanguages?: string[];
     importantFiles: string[];
     documentationFiles: string[];
     testFiles: string[];
@@ -688,12 +689,21 @@ export default function Home() {
                 <section className="pretty-section">
                   <h4>Detected Stack</h4>
                   <ul>
-                    {(result?.summary.detectedStack.length
-                      ? result.summary.detectedStack
-                      : ["Run the inspection to detect technologies."]
-                    ).map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
+                    {result ? (
+                      result.summary.detectedStack.length ? (
+                        result.summary.detectedStack.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))
+                      ) : (
+                        <li className="not-detected">
+                          Not detected from repository evidence.
+                        </li>
+                      )
+                    ) : (
+                      <li className="pending-detection">
+                        No inspection run yet.
+                      </li>
+                    )}
                   </ul>
                 </section>
 
@@ -747,7 +757,14 @@ export default function Home() {
                       README stack hints:{" "}
                       {result
                         ? result.summary.readmeAnalysis.detectedStackHints.join(", ") ||
-                          "None detected"
+                          "Not detected"
+                        : "--"}
+                    </li>
+                    <li>
+                      GitHub language metadata:{" "}
+                      {result
+                        ? result.summary.githubLanguages?.join(", ") ||
+                          "Unavailable for this inspection"
                         : "--"}
                     </li>
                     <li>

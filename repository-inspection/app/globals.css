@@ -674,6 +674,15 @@ textarea {
   line-height: 1.55;
 }
 
+.not-detected {
+  color: #8a6500;
+  font-weight: 700;
+}
+
+.pending-detection {
+  color: #61707d;
+}
+
 .dora-note {
   color: #61707d;
   margin-bottom: 14px;
