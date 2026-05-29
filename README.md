@@ -9,6 +9,34 @@ This project is a developer-facing prototype that inspects software repositories
 
 The tool first performs deterministic repository analysis, then sends a compact summary to the OpenAI API for an AI-assisted report. It is designed to avoid sending full repositories or sensitive files to the model.
 
+## Quick Start
+
+Install, run, and verify the application from the Next.js app directory:
+
+```bash
+cd repository-inspection
+npm ci
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+Run the local quality checks:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+Create `repository-inspection/.env` with:
+
+```env
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=gpt-5-nano
+```
+
 ## Features
 
 - Inspect a public GitHub repository by URL
@@ -23,6 +51,7 @@ The tool first performs deterministic repository analysis, then sends a compact 
 - Store recent inspection reports locally in browser storage
 - Reopen previous local reports from report history
 - Run automated tests for filtering, summary generation, and API behavior
+- Expose `/api/health` for lightweight deployment verification
 
 ## Experiment Context
 
@@ -62,6 +91,10 @@ The DORA section does not claim to measure DORA metrics directly. It checks repo
 ```text
 AI-Assisted-Repository-Inspection/
   README.md
+  CONTRIBUTING.md
+  docs/
+    architecture.md
+    operations.md
   .github/workflows/
     CI-pipeline.yml
     CD-pipeline.yml
@@ -69,6 +102,7 @@ AI-Assisted-Repository-Inspection/
     app/
       api/
         github-summary/
+        health/
         inspect/
         report/
       page.tsx
@@ -191,11 +225,21 @@ The scanner excludes:
 
 The OpenAI API key is never used in frontend code. It is read only from server-side environment variables.
 
+## Operations and Recovery
+
+The app includes a lightweight health check:
+
+```text
+GET /api/health
+```
+
+Use it after deployment to confirm the serverless app can respond before testing GitHub or OpenAI-dependent flows. Recovery steps and deployment verification notes are documented in `docs/operations.md`.
+
 ## CI/CD
 
 The repository includes GitHub Actions workflows:
 
-- CI: install dependencies, lint, and build the app
+- CI: install dependencies, lint, typecheck, test, and build the app
 - CD: trigger a Vercel deployment after successful CI on `main`
 
 ## Current Scope
@@ -211,6 +255,7 @@ In scope:
 - Markdown and JSON export
 - Automated tests
 - Vercel deployment
+- Health check route and recovery notes
 
 Out of scope:
 

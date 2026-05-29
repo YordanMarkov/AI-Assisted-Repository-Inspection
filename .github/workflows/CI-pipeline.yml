@@ -33,6 +33,14 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: npm run lint
 
-      - name: 5) Build Next.js application
+      - name: 5) Run type checks
+        working-directory: ${{ env.APP_DIR }}
+        run: npm run typecheck
+
+      - name: 6) Run automated tests
+        working-directory: ${{ env.APP_DIR }}
+        run: npm test
+
+      - name: 7) Build Next.js application
         working-directory: ${{ env.APP_DIR }}
         run: npm run build

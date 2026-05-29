@@ -328,6 +328,13 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
   const hasCi = summary.ciFiles.length > 0;
   const hasReadme = summary.readmeAnalysis.readmeFiles.length > 0;
   const hasGitHubActivity = Boolean(summary.githubActivity);
+  const hasMonitoringEvidence =
+    !summary.doraEvidence.monitoringRecovery.toLowerCase().startsWith("no ");
+  const hasQualityScripts = Boolean(
+    summary.packageScripts.lint &&
+      summary.packageScripts.typecheck &&
+      summary.packageScripts.build,
+  );
   const bestPracticeRecommendations = buildBestPracticeRecommendations(summary);
 
   return {
@@ -386,7 +393,7 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
       },
       {
         label: "Monitoring and recovery evidence",
-        status: "Missing",
+        status: hasMonitoringEvidence ? "Partial" : "Missing",
         evidence: summary.doraEvidence.monitoringRecovery,
       },
     ],
@@ -404,14 +411,14 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
     ],
     scores: [
       { label: "Repository structure", value: summary.sourceFolders.length ? 70 : 45, rationale: "Based on detected source folder structure." },
-      { label: "Code quality evidence", value: hasTests ? 55 : 25, rationale: "Based on test and script evidence, not full static analysis." },
-      { label: "Dependencies and configuration", value: summary.configFileCount ? 60 : 30, rationale: "Based on dependency/configuration files and scripts." },
+      { label: "Code quality evidence", value: hasQualityScripts && hasTests ? 75 : hasTests ? 55 : 25, rationale: "Based on lint, typecheck, build, test, and script evidence, not full static analysis." },
+      { label: "Dependencies and configuration", value: summary.configFileCount && Object.keys(summary.packageScripts).length >= 5 ? 70 : summary.configFileCount ? 60 : 30, rationale: "Based on dependency/configuration files and scripts." },
       { label: "README quality", value: hasReadme ? Math.min(80, 25 + summary.readmeAnalysis.qualitySignals.length * 8) : 10, rationale: "Based on README setup, usage, testing, deployment, and architecture signals." },
       { label: "Collaboration evidence", value: hasGitHubActivity ? Math.min(80, 30 + (summary.githubActivity?.contributorCount || 0) * 8) : 0, rationale: "Based on public GitHub commit and contributor metadata when available." },
-      { label: "Documentation", value: hasDocs ? 55 : 20, rationale: "Based on documentation file evidence." },
-      { label: "Testing", value: hasTests ? 55 : 15, rationale: "Based on test files and scripts." },
-      { label: "Deployment readiness", value: hasDeployment ? 60 : 25, rationale: "Based on deployment file evidence." },
-      { label: "DORA-inspired readiness", value: hasCi && hasTests ? 60 : 30, rationale: "Based on CI, testing, deployment, and recovery repository signals." },
+      { label: "Documentation", value: summary.documentationFiles.length >= 3 ? 70 : hasDocs ? 55 : 20, rationale: "Based on README, contribution, and docs file evidence." },
+      { label: "Testing", value: hasTests && summary.testFiles.length >= 4 ? 70 : hasTests ? 55 : 15, rationale: "Based on test files and scripts." },
+      { label: "Deployment readiness", value: hasDeployment && hasMonitoringEvidence ? 70 : hasDeployment ? 60 : 25, rationale: "Based on deployment file and health check evidence." },
+      { label: "DORA-inspired readiness", value: hasCi && hasTests && hasDeployment && hasMonitoringEvidence ? 75 : hasCi && hasTests ? 60 : 30, rationale: "Based on CI, testing, deployment, and recovery repository signals." },
     ],
     aiAccuracyNote:
       "This fallback report is generated from deterministic checks only because AI output was unavailable.",

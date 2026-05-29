@@ -78,4 +78,27 @@ describe("repository summary stack detection", () => {
       ]),
     );
   });
+
+  it("detects source folders inside archived repository root folders", async () => {
+    const file = await createZipFile("nested-next-app.zip", {
+      "project-main/repository-inspection/app/page.tsx":
+        "export default function Page() { return null; }",
+      "project-main/repository-inspection/lib/repository-summary.ts":
+        "export function summarize() { return {}; }",
+      "project-main/repository-inspection/package.json": JSON.stringify({
+        scripts: { build: "next build", test: "vitest run" },
+        dependencies: { next: "16.2.6", react: "19.2.4" },
+        devDependencies: { vitest: "4.1.7" },
+      }),
+    });
+
+    const summary = await buildRepositorySummary(file);
+
+    expect(summary.sourceFolders).toEqual(
+      expect.arrayContaining([
+        "project-main/repository-inspection/app",
+        "project-main/repository-inspection/lib",
+      ]),
+    );
+  });
 });

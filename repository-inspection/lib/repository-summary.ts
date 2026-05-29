@@ -74,6 +74,17 @@ const textExtensions = new Set([
   ".dockerfile",
 ]);
 
+const sourceDirectoryNames = new Set([
+  "src",
+  "app",
+  "pages",
+  "server",
+  "client",
+  "lib",
+  "components",
+  "api",
+]);
+
 export type ImportantFile = {
   path: string;
   excerpt: string;
@@ -475,6 +486,25 @@ function buildDoraEvidence(paths: string[], packageJson: PackageJson | null) {
   };
 }
 
+function detectSourceFolders(paths: string[]) {
+  const folders = paths.flatMap((path) => {
+    const segments = getPathSegments(path);
+    const matches: string[] = [];
+
+    segments.slice(0, -1).forEach((segment, index) => {
+      const lower = segment.toLowerCase();
+      if (!sourceDirectoryNames.has(lower)) return;
+
+      const folderPath = segments.slice(0, index + 1).join("/");
+      matches.push(folderPath);
+    });
+
+    return matches;
+  });
+
+  return unique(folders);
+}
+
 function countEvidenceSignals(
   summary: Omit<DeterministicSummary, "evidenceSignalCount">,
 ) {
@@ -571,22 +601,7 @@ export async function buildRepositorySummary(file: File): Promise<DeterministicS
   const ciFiles = paths.filter((path) =>
     path.toLowerCase().includes(".github/workflows/"),
   );
-  const sourceFolders = unique(
-    paths
-      .map((path) => path.split("/").slice(0, 2).join("/"))
-      .filter((path) => {
-        const lower = path.toLowerCase();
-        return (
-          lower === "src" ||
-          lower === "app" ||
-          lower === "pages" ||
-          lower === "server" ||
-          lower === "client" ||
-          lower.startsWith("src/") ||
-          lower.startsWith("app/")
-        );
-      }),
-  );
+  const sourceFolders = detectSourceFolders(paths);
 
   const partialSummary = {
     projectName: inferProjectName(file.name, packageJson),
