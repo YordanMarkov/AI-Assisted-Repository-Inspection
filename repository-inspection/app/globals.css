@@ -579,6 +579,11 @@ textarea {
   min-height: auto;
 }
 
+.best-practices-panel {
+  margin-top: 16px;
+  min-height: auto;
+}
+
 .history-panel {
   background: #fbfcfe;
   border: 1px solid #e0e8ef;
@@ -741,6 +746,101 @@ textarea {
   color: #a33a3a;
 }
 
+.best-practice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.best-practice-card {
+  background: #ffffff;
+  border: 1px solid #d7e3ec;
+  border-left: 5px solid #007acc;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(35, 52, 68, 0.06);
+  padding: 16px;
+}
+
+.best-practice-card p {
+  color: #4c5d6b;
+  line-height: 1.55;
+  margin: 10px 0 0;
+}
+
+.best-practice-card strong {
+  color: #234;
+}
+
+.best-practice-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.best-practice-heading h4 {
+  color: #234;
+  font-size: 18px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.best-practice-title-group {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.practice-index {
+  align-items: center;
+  background: #eaf5fd;
+  border: 1px solid #99bfdc;
+  border-radius: 8px;
+  color: #005fa3;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 800;
+  height: 32px;
+  justify-content: center;
+  width: 36px;
+}
+
+.priority-badge {
+  background: #eef3f7;
+  border: 1px solid #d9e2ea;
+  border-radius: 999px;
+  color: #234;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 7px 10px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.priority-badge.high {
+  background: #fdecec;
+  border-color: #f0b4b4;
+  color: #a33a3a;
+}
+
+.priority-badge.medium {
+  background: #fff6dc;
+  border-color: #ead18b;
+  color: #8a6500;
+}
+
+.priority-badge.low {
+  background: #eaf5fd;
+  border-color: #99bfdc;
+  color: #005fa3;
+}
+
 .score-row {
   background: #ffffff;
   border: 1px solid #e0e8ef;
@@ -830,6 +930,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .best-practice-grid {
+    grid-template-columns: 1fr;
+  }
+
   .pipeline-card-header,
   .pipeline-status-header {
     flex-direction: column;
@@ -870,6 +974,10 @@ textarea {
 
   .run-progress-text {
     text-align: left;
+  }
+
+  .best-practice-heading {
+    flex-direction: column;
   }
 }
 
@@ -934,12 +1042,14 @@ textarea {
 
   .step-panels,
   .dora-grid,
+  .best-practice-grid,
   .report-lower-grid {
     display: block;
   }
 
   .history-panel,
   .pretty-section,
+  .best-practice-card,
   .score-row {
     break-inside: avoid;
     page-break-inside: avoid;

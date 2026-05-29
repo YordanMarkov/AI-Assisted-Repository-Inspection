@@ -22,6 +22,13 @@ type InspectionReport = {
     status: "Strong" | "Partial" | "Weak" | "Missing";
     evidence: string;
   }>;
+  bestPracticeRecommendations: Array<{
+    area: string;
+    priority: "High" | "Medium" | "Low";
+    finding: string;
+    recommendation: string;
+    example: string;
+  }>;
   suggestedImprovements: string[];
   prioritizedActionPoints: string[];
   scores: Array<{
@@ -48,6 +55,7 @@ const reportSchema = {
     "maintainabilityRisks",
     "deploymentReadiness",
     "doraReadiness",
+    "bestPracticeRecommendations",
     "suggestedImprovements",
     "prioritizedActionPoints",
     "scores",
@@ -81,6 +89,21 @@ const reportSchema = {
         },
       },
     },
+    bestPracticeRecommendations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["area", "priority", "finding", "recommendation", "example"],
+        properties: {
+          area: { type: "string" },
+          priority: { type: "string", enum: ["High", "Medium", "Low"] },
+          finding: { type: "string" },
+          recommendation: { type: "string" },
+          example: { type: "string" },
+        },
+      },
+    },
     suggestedImprovements: { type: "array", items: { type: "string" } },
     prioritizedActionPoints: { type: "array", items: { type: "string" } },
     scores: {
@@ -100,6 +123,203 @@ const reportSchema = {
   },
 };
 
+function buildBestPracticeRecommendations(
+  summary: DeterministicSummary,
+): InspectionReport["bestPracticeRecommendations"] {
+  const hasDocs = summary.documentationFiles.length > 0;
+  const hasTests =
+    summary.testFiles.length > 0 || Boolean(summary.packageScripts.test);
+  const hasDeployment = summary.deploymentFiles.length > 0;
+  const hasCi = summary.ciFiles.length > 0;
+  const hasReadme = summary.readmeAnalysis.readmeFiles.length > 0;
+  const hasGitHubActivity = Boolean(summary.githubActivity);
+  const recommendations: InspectionReport["bestPracticeRecommendations"] = [];
+  const addRecommendation = (
+    recommendation: InspectionReport["bestPracticeRecommendations"][number],
+  ) => {
+    if (!recommendations.some((item) => item.area === recommendation.area)) {
+      recommendations.push(recommendation);
+    }
+  };
+
+  if (!hasReadme || summary.readmeAnalysis.missingSignals.length > 0) {
+    addRecommendation({
+      area: "README and onboarding",
+      priority: "High",
+      finding: hasReadme
+        ? `The README is missing or weak on: ${summary.readmeAnalysis.missingSignals.slice(0, 3).join(", ")}.`
+        : "No README was detected, so new users cannot quickly understand or run the project.",
+      recommendation:
+        "Use the README as the first quality gate: explain purpose, setup, environment variables, run/test commands, deployment, and architecture notes.",
+      example:
+        "Add sections named Overview, Tech Stack, Setup, Environment, Run, Test, Deploy, and Project Structure.",
+    });
+  }
+
+  if (!hasTests) {
+    addRecommendation({
+      area: "Automated testing",
+      priority: "High",
+      finding:
+        "No clear test files or package test script were detected, which makes regressions harder to catch.",
+      recommendation:
+        "Add a small but reliable test suite around the highest-risk behavior first, then run it through a package script and CI.",
+      example:
+        "Create tests for core parsing, validation, API responses, and important UI states; expose them through npm test.",
+    });
+  } else {
+    addRecommendation({
+      area: "Test quality and coverage",
+      priority: "Medium",
+      finding:
+        "Testing evidence was detected, but the scanner cannot confirm coverage, risk focus, or whether critical paths are protected.",
+      recommendation:
+        "Review whether tests cover the most important user flows, API contracts, edge cases, and failure states instead of only checking happy paths.",
+      example:
+        "Keep the test script, then add tests for validation failures, empty states, integration boundaries, and one high-value end-to-end flow.",
+    });
+  }
+
+  if (!hasCi) {
+    addRecommendation({
+      area: "Continuous integration",
+      priority: hasTests ? "Medium" : "High",
+      finding:
+        "No CI workflow was detected, so quality checks may depend on manual discipline.",
+      recommendation:
+        "Add a GitHub Actions workflow that installs dependencies and runs lint, tests, and build checks on pull requests.",
+      example:
+        "Use workflow steps for npm ci, npm run lint, npm test, and npm run build.",
+    });
+  } else {
+    addRecommendation({
+      area: "CI quality gates",
+      priority: "Medium",
+      finding:
+        "CI workflow evidence was detected, so the next improvement is making sure it blocks the right risks before merge or deployment.",
+      recommendation:
+        "Use CI as a quality gate for linting, tests, build verification, and dependency installation consistency.",
+      example:
+        "Check that pull requests run install, lint, test, and build jobs before code reaches the main branch.",
+    });
+  }
+
+  if (!hasDeployment) {
+    addRecommendation({
+      area: "Deployment readiness",
+      priority: "Medium",
+      finding:
+        "No deployment configuration or deployment documentation was detected.",
+      recommendation:
+        "Document the production build command, required environment variables, and deployment target so releases are repeatable.",
+      example:
+        "For Vercel, document the root directory, build command, output behavior, and required project environment variables.",
+    });
+  }
+
+  if (summary.detectedStack.length === 0) {
+    addRecommendation({
+      area: "Technology stack clarity",
+      priority: "Medium",
+      finding:
+        "The scanner could not confidently detect the technology stack from dependencies, files, README hints, or GitHub language metadata.",
+      recommendation:
+        "Make the stack explicit in dependency files and README documentation so maintainers and tools can understand the project quickly.",
+      example:
+        "Add a Tech Stack section such as Frontend: Next.js + React, Testing: Vitest, Deployment: Vercel.",
+    });
+  }
+
+  addRecommendation({
+    area: "Code quality evidence",
+    priority: hasTests ? "Medium" : "High",
+    finding: hasTests
+      ? "The repository has test evidence, but the inspection cannot verify static analysis, formatting, complexity, or duplication checks."
+      : "Without tests or visible static checks, code quality depends mostly on manual review.",
+    recommendation:
+      "Make code quality measurable with repeatable checks for linting, formatting, type safety, tests, and build health.",
+    example:
+      "Expose scripts such as lint, test, typecheck, and build, then run them locally and in CI.",
+  });
+
+  if (
+    !hasDocs ||
+    !summary.readmeAnalysis.qualitySignals.some((signal) =>
+      signal.toLowerCase().includes("architecture"),
+    )
+  ) {
+    addRecommendation({
+      area: "Maintainability documentation",
+      priority: "Medium",
+      finding:
+        "Architecture or project-structure guidance appears missing or light.",
+      recommendation:
+        "Add short architecture notes that explain where key code lives, how data flows, and which files are safe extension points.",
+      example:
+        "Include a Project Structure table with app routes, API routes, shared libraries, tests, and deployment files.",
+    });
+  }
+
+  if (summary.dependencies.length || summary.devDependencies.length) {
+    addRecommendation({
+      area: "Dependency hygiene",
+      priority: "Medium",
+      finding:
+        "Dependency metadata was detected, but the scanner cannot confirm update policy, unused packages, or audit status.",
+      recommendation:
+        "Keep dependencies understandable and reviewable by documenting major libraries, removing unused packages, and checking for known vulnerabilities.",
+      example:
+        "Add a short Dependencies note in the README and run npm audit or the package manager equivalent before releases.",
+    });
+  }
+
+  if (!hasGitHubActivity) {
+    addRecommendation({
+      area: "Collaboration evidence",
+      priority: "Low",
+      finding:
+        "Commit and contributor evidence is unavailable for this inspection, which limits collaboration assessment.",
+      recommendation:
+        "For public repositories, keep commit messages descriptive and add contribution guidance when more than one person works on the project.",
+      example:
+        "Use commit messages like Add repository summary tests or Fix Vercel build root instead of vague messages like update.",
+    });
+  } else {
+    addRecommendation({
+      area: "Collaboration workflow",
+      priority: "Low",
+      finding:
+        "GitHub activity was available, but sampled commits alone cannot prove review quality or team workflow consistency.",
+      recommendation:
+        "Keep collaboration easy to audit with descriptive commits, pull request descriptions, and lightweight contribution notes.",
+      example:
+        "Use PR descriptions that list the change, test evidence, and any deployment or configuration impact.",
+    });
+  }
+
+  return recommendations.slice(0, 6);
+}
+
+function completeBestPracticeRecommendations(
+  report: InspectionReport,
+  summary: DeterministicSummary,
+): InspectionReport {
+  const deterministicRecommendations = buildBestPracticeRecommendations(summary);
+  const recommendations = [...(report.bestPracticeRecommendations || [])];
+
+  for (const recommendation of deterministicRecommendations) {
+    if (recommendations.length >= 4) break;
+    if (!recommendations.some((item) => item.area === recommendation.area)) {
+      recommendations.push(recommendation);
+    }
+  }
+
+  return {
+    ...report,
+    bestPracticeRecommendations: recommendations.slice(0, 6),
+  };
+}
+
 function fallbackReport(summary: DeterministicSummary): InspectionReport {
   const hasDocs = summary.documentationFiles.length > 0;
   const hasTests =
@@ -108,6 +328,7 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
   const hasCi = summary.ciFiles.length > 0;
   const hasReadme = summary.readmeAnalysis.readmeFiles.length > 0;
   const hasGitHubActivity = Boolean(summary.githubActivity);
+  const bestPracticeRecommendations = buildBestPracticeRecommendations(summary);
 
   return {
     overview: `${summary.projectName} contains ${summary.fileCount} inspected files and uses ${summary.detectedStack.join(", ") || "an undetected stack"}.`,
@@ -169,6 +390,7 @@ function fallbackReport(summary: DeterministicSummary): InspectionReport {
         evidence: summary.doraEvidence.monitoringRecovery,
       },
     ],
+    bestPracticeRecommendations,
     suggestedImprovements: [
       "Document setup, environment variables, run commands, and architecture.",
       "Add or strengthen automated tests.",
@@ -205,7 +427,7 @@ async function generateAiReport(summary: DeterministicSummary) {
   const response = await client.responses.create({
     model: MODEL,
     instructions:
-      "You are an AI-assisted software repository inspector. Use only the repository summary provided by deterministic scanning. Do not invent files, tools, metrics, deployment history, incidents, or code behavior. Separate facts from interpretation. Include concise repository structure, architecture, code quality evidence, dependency/configuration, README quality, documentation, testing, collaboration/commit-history evidence when available, maintainability, deployment, and DORA-inspired readiness observations. You may use README-derived stack hints, but clearly treat them as README evidence instead of confirmed dependency evidence. For code quality, comment only on repository evidence such as tests, scripts, structure, configuration, and maintainability signals; do not claim full static analysis, complexity measurement, vulnerability scanning, or duplication detection unless evidence exists. For collaboration, use only sampled public GitHub commit/contributor metadata and avoid judging individual developers. For DORA, do not claim to measure DORA metrics directly; only assess repository evidence that supports delivery readiness.",
+      "You are an AI-assisted software repository inspector. Use only the repository summary provided by deterministic scanning. Do not invent files, tools, metrics, deployment history, incidents, or code behavior. Separate facts from interpretation. Include concise repository structure, architecture, code quality evidence, dependency/configuration, README quality, documentation, testing, collaboration/commit-history evidence when available, maintainability, deployment, and DORA-inspired readiness observations. Add 4 to 6 bestPracticeRecommendations that explain where the repository is weak and how to improve it. Do not make the recommendations only about README quality. Cover multiple applicable areas such as code quality evidence, automated testing, CI, deployment readiness, dependency/configuration hygiene, maintainability documentation, stack clarity, or collaboration workflow. Each best practice must be tied to detected evidence or missing evidence from the summary and include a short concrete example. Avoid generic advice that could apply to every project. You may use README-derived stack hints, but clearly treat them as README evidence instead of confirmed dependency evidence. For code quality, comment only on repository evidence such as tests, scripts, structure, configuration, and maintainability signals; do not claim full static analysis, complexity measurement, vulnerability scanning, or duplication detection unless evidence exists. For collaboration, use only sampled public GitHub commit/contributor metadata and avoid judging individual developers. For DORA, do not claim to measure DORA metrics directly; only assess repository evidence that supports delivery readiness.",
     input: `Generate a concise software quality and maintainability inspection report for this repository summary:\n\n${buildCompactContext(summary)}`,
     max_output_tokens: 2800,
     text: {
@@ -219,7 +441,10 @@ async function generateAiReport(summary: DeterministicSummary) {
     },
   });
 
-  return JSON.parse(response.output_text) as InspectionReport;
+  return completeBestPracticeRecommendations(
+    JSON.parse(response.output_text) as InspectionReport,
+    summary,
+  );
 }
 
 export async function POST(request: Request) {

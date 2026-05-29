@@ -80,6 +80,13 @@ type InspectionResponse = {
       status: DoraStatus;
       evidence: string;
     }>;
+    bestPracticeRecommendations: Array<{
+      area: string;
+      priority: "High" | "Medium" | "Low";
+      finding: string;
+      recommendation: string;
+      example: string;
+    }>;
     suggestedImprovements: string[];
     prioritizedActionPoints: string[];
     scores: Array<{
@@ -133,6 +140,10 @@ function getDoraStatusClass(status: string) {
   return `dora-status ${status.toLowerCase().replace(/[^a-z]+/g, "-")}`;
 }
 
+function getPriorityClass(priority: string) {
+  return `priority-badge ${priority.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+}
+
 function buildMarkdown(result: InspectionResponse) {
   const { summary, report } = result;
   const scoreLines = report.scores
@@ -146,6 +157,12 @@ function buildMarkdown(result: InspectionResponse) {
     .join("\n");
   const doraLines = report.doraReadiness
     .map((item) => `- ${item.label}: ${item.status} - ${item.evidence}`)
+    .join("\n");
+  const bestPracticeLines = (report.bestPracticeRecommendations || [])
+    .map(
+      (item) =>
+        `- ${item.area} (${item.priority}): ${item.finding} Recommendation: ${item.recommendation} Example: ${item.example}`,
+    )
     .join("\n");
   const actionLines = report.prioritizedActionPoints
     .map((item, index) => `${index + 1}. ${item}`)
@@ -193,6 +210,9 @@ ${report.deploymentReadiness}
 
 ## DORA-Inspired Delivery Readiness
 ${doraLines}
+
+## Best Practice Recommendations
+${bestPracticeLines}
 
 ## Suggested Improvements
 ${improvementLines}
@@ -871,6 +891,61 @@ export default function Home() {
                     </span>
                   </div>
                   <p className="pretty-paragraph">{signal.evidence}</p>
+                </section>
+              ))}
+            </div>
+          </section>
+
+          <section className="history-panel best-practices-panel">
+            <div className="panel-header">
+              <div className="panel-title">Best Practice Recommendations</div>
+            </div>
+
+            <p className="pretty-paragraph dora-note">
+              These items connect repository evidence to concrete improvement
+              steps, so the report shows what to fix and why it matters.
+            </p>
+
+            <div className="best-practice-grid">
+              {(result?.report.bestPracticeRecommendations?.length
+                ? result.report.bestPracticeRecommendations
+                : [
+                    {
+                      area: "Waiting for inspection",
+                      priority: "--",
+                      finding:
+                        "Run the inspection to discover repo-specific weak spots.",
+                      recommendation:
+                        "Recommendations will appear here after analysis.",
+                      example:
+                        "Examples will be tailored to the repository evidence.",
+                    },
+                  ]
+              ).map((item, index) => (
+                <section className="best-practice-card" key={`${item.area}-${index}`}>
+                  <div className="best-practice-heading">
+                    <div className="best-practice-title-group">
+                      <span className="practice-index">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <h4>{item.area}</h4>
+                    </div>
+                    <span
+                      className={getPriorityClass(item.priority)}
+                      aria-label={`Priority: ${item.priority}`}
+                    >
+                      {item.priority} priority
+                    </span>
+                  </div>
+                  <p>
+                    <strong>Finding:</strong> {item.finding}
+                  </p>
+                  <p>
+                    <strong>Best practice:</strong> {item.recommendation}
+                  </p>
+                  <p>
+                    <strong>Example:</strong> {item.example}
+                  </p>
                 </section>
               ))}
             </div>

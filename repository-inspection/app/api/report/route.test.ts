@@ -92,6 +92,12 @@ describe("repository report API", () => {
     expect(body.report.codeQualityAssessment).toContain("code quality");
     expect(body.report.readmeAssessment).toContain("README");
     expect(body.report.collaborationAssessment).toContain("recent commits");
+    expect(body.report.bestPracticeRecommendations.length).toBeGreaterThanOrEqual(4);
+    expect(
+      body.report.bestPracticeRecommendations.map(
+        (item: { area: string }) => item.area,
+      ),
+    ).toEqual(expect.arrayContaining(["README and onboarding"]));
     expect(body.report.scores.map((score: { label: string }) => score.label)).toEqual(
       expect.arrayContaining([
         "Code quality evidence",
